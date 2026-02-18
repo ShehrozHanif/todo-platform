@@ -1,4 +1,6 @@
 # Claude Code Rules
+See @AGENTS.md for project context and guidelines.
+
 
 This file is generated during init for the selected agent.
 
