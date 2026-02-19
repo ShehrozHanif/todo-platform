@@ -346,3 +346,4 @@ Agents are NOT allowed to:
 ```
 
 **Each arrow (→) is a complete SDD cycle: specify → clarify → plan → tasks → analyze → checklist → implement → commit.**
+
