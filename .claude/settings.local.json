@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest:*)",
+      "Bash(uv sync:*)",
+      "Bash(npm install:*)",
+      "Bash(node test-auth.cjs:*)",
+      "Bash(uv run python:*)",
+      "Bash(curl:*)",
+      "Bash(gh pr:*)",
+      "Bash(npx next build:*)",
+      "Bash(npx vercel:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}
