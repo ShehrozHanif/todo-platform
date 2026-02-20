@@ -21,15 +21,16 @@ export default function SignupPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await signUp.email({ name, email, password, callbackURL: '/dashboard' });
+      const result = await signUp.email({ name, email, password });
       if (result?.error) {
         setError(result.error.message || 'Registration failed');
+        setLoading(false);
       } else {
-        router.push('/dashboard');
+        // Full page reload ensures session cookie is sent on next request
+        window.location.href = '/dashboard';
       }
     } catch {
       setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   }

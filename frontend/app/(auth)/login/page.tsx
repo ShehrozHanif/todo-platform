@@ -19,15 +19,16 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await signIn.email({ email, password, callbackURL: '/dashboard' });
+      const result = await signIn.email({ email, password });
       if (result?.error) {
         setError(result.error.message || 'Invalid email or password');
+        setLoading(false);
       } else {
-        router.push('/dashboard');
+        // Full page reload ensures session cookie is sent on next request
+        window.location.href = '/dashboard';
       }
     } catch {
       setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   }
