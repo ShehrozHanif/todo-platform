@@ -3,13 +3,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/signup', '/api/auth'];
+const PUBLIC_PATHS = ['/login', '/signup', '/welcome', '/api/auth'];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths through
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+  if (pathname === '/' || PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 

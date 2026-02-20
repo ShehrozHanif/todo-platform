@@ -9,8 +9,14 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isPending) {
-      router.replace(session ? '/dashboard' : '/login');
+    if (isPending) return;
+
+    if (session) {
+      router.replace('/dashboard');
+    } else {
+      // Mobile → welcome page, Desktop → login page
+      const isMobile = window.innerWidth < 768;
+      router.replace(isMobile ? '/welcome' : '/login');
     }
   }, [session, isPending, router]);
 
