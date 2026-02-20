@@ -1,21 +1,22 @@
-// [Task]: T017 [From]: specs/phase2-web/frontend-ui/tasks.md §T017
-// Root layout — server component, metadata, Tailwind globals.
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Providers } from './providers';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Todo Platform",
-  description: "Manage your tasks with a modern web interface",
+  title: 'TaskFlow — Stay organised',
+  description: 'A beautiful task management app',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased" suppressHydrationWarning>{children}</body>
+      <head>
+        {/* Inline script runs before React hydrates — prevents dark/light flash */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var s=localStorage.getItem('taskflow-theme');var d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(s==='dark'||(s===null&&d)){document.documentElement.classList.add('dark')}})()` }} />
+      </head>
+      <body suppressHydrationWarning>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

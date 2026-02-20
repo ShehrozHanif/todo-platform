@@ -1,10 +1,8 @@
-// [Task]: T018 [From]: specs/phase2-web/frontend-ui/tasks.md §T018
-// Landing page — redirects authenticated users to /dashboard, others to /login.
-"use client";
+'use client';
 
-import { useSession } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useSession } from '@/lib/auth-client';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function HomePage() {
   const { data: session, isPending } = useSession();
@@ -12,17 +10,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isPending) {
-      if (session) {
-        router.replace("/dashboard");
-      } else {
-        router.replace("/login");
-      }
+      router.replace(session ? '/dashboard' : '/login');
     }
   }, [session, isPending, router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <p className="text-gray-500">Redirecting...</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F5FB] dark:bg-[#0D0E1A]">
+      <div className="w-8 h-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
     </div>
   );
 }

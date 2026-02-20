@@ -1,19 +1,76 @@
-// [Task]: T005 [From]: specs/phase2-web/frontend-ui/plan.md §API Client
-// Centralized API client with JWT auto-attach. Never call fetch directly in components.
-"use client";
+// API client — wires TaskFlow UI to FastAPI backend.
+// Backend tasks are mapped to TaskFlow's Task type (priority/category/dueDate get defaults).
+'use client';
 
-import type { Task, TaskCreateInput, TaskUpdateInput } from "@/types/task";
+import type { Task } from '@/lib/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-/**
- * Get an HS256 JWT from our custom /api/token endpoint.
- * That endpoint verifies the Better Auth session cookie and issues
- * a JWT the FastAPI backend can verify with BETTER_AUTH_SECRET.
- */
+// Shape the backend returns
+interface BackendTask {
+  id: number;
+  user_id: string;
+  title: string;
+  description: string | null;
+  completed: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** UI-only fields that the backend doesn't store. */
+interface TaskExtras {
+  priority?: string;
+  category?: string;
+  dueDate?: string;
+  dueTime?: string;
+  recurring?: boolean;
+  reminder?: boolean;
+}
+
+const EXTRAS_PREFIX = 'taskflow-extras-';
+
+/** Persist UI-only fields for a task in localStorage. */
+export function saveTaskExtras(taskId: string, extras: TaskExtras): void {
+  try {
+    localStorage.setItem(`${EXTRAS_PREFIX}${taskId}`, JSON.stringify(extras));
+  } catch { /* quota exceeded — silently ignore */ }
+}
+
+/** Read persisted UI-only fields for a task. */
+export function getTaskExtras(taskId: string): TaskExtras {
+  try {
+    const raw = localStorage.getItem(`${EXTRAS_PREFIX}${taskId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+/** Remove persisted extras when a task is deleted. */
+export function removeTaskExtras(taskId: string): void {
+  try { localStorage.removeItem(`${EXTRAS_PREFIX}${taskId}`); } catch { /* ignore */ }
+}
+
+/** Map a backend task to the TaskFlow Task shape, merging any stored extras. */
+function mapTask(t: BackendTask): Task {
+  const extras = getTaskExtras(t.id.toString());
+  return {
+    id: t.id.toString(),
+    title: t.title,
+    description: t.description ?? undefined,
+    priority: (extras.priority as Task['priority']) || 'medium',
+    category: extras.category || 'work',
+    dueDate: extras.dueDate || undefined,
+    dueTime: extras.dueTime || undefined,
+    recurring: extras.recurring,
+    reminder: extras.reminder,
+    completed: t.completed,
+    createdAt: t.created_at ?? new Date().toISOString(),
+  };
+}
+
+/** Fetch an HS256 JWT from the /api/token bridge endpoint. */
 async function getToken(): Promise<string | null> {
   try {
-    const res = await fetch("/api/token", { credentials: "include" });
+    const res = await fetch('/api/token', { credentials: 'include' });
     if (!res.ok) return null;
     const data = await res.json();
     return data.token ?? null;
@@ -22,81 +79,57 @@ async function getToken(): Promise<string | null> {
   }
 }
 
-/**
- * Centralized fetch wrapper that auto-attaches JWT Bearer token.
- */
+/** Fetch wrapper that auto-attaches the JWT Bearer token. */
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getToken();
-
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Request failed" }));
+    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
     throw new Error((error as { detail?: string }).detail || `HTTP ${response.status}`);
   }
-
-  // 204 No Content — no body to parse
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-// ── Task API Functions ────────────────────────────────────────────
-
-/** List all tasks for a user. */
 export async function getTasks(userId: string): Promise<Task[]> {
-  return apiFetch<Task[]>(`/api/${userId}/tasks`);
+  const tasks = await apiFetch<BackendTask[]>(`/api/${userId}/tasks`);
+  return tasks.map(mapTask);
 }
 
-/** Create a new task. */
-export async function createTask(userId: string, data: TaskCreateInput): Promise<Task> {
-  return apiFetch<Task>(`/api/${userId}/tasks`, {
-    method: "POST",
+export async function createTask(userId: string, data: { title: string; description?: string }): Promise<Task> {
+  const task = await apiFetch<BackendTask>(`/api/${userId}/tasks`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
+  return mapTask(task);
 }
 
-/** Get a single task by ID. */
-export async function getTask(userId: string, taskId: number): Promise<Task> {
-  return apiFetch<Task>(`/api/${userId}/tasks/${taskId}`);
-}
-
-/** Update a task's title and/or description. */
 export async function updateTask(
   userId: string,
-  taskId: number,
-  data: TaskUpdateInput,
+  taskId: string,
+  data: { title?: string; description?: string },
 ): Promise<Task> {
-  return apiFetch<Task>(`/api/${userId}/tasks/${taskId}`, {
-    method: "PUT",
+  const task = await apiFetch<BackendTask>(`/api/${userId}/tasks/${taskId}`, {
+    method: 'PUT',
     body: JSON.stringify(data),
   });
+  return mapTask(task);
 }
 
-/** Delete a task. */
-export async function deleteTask(userId: string, taskId: number): Promise<void> {
-  return apiFetch<void>(`/api/${userId}/tasks/${taskId}`, {
-    method: "DELETE",
-  });
+export async function deleteTask(userId: string, taskId: string): Promise<void> {
+  await apiFetch<void>(`/api/${userId}/tasks/${taskId}`, { method: 'DELETE' });
 }
 
-/** Toggle task completion status. */
-export async function toggleComplete(userId: string, taskId: number): Promise<Task> {
-  return apiFetch<Task>(`/api/${userId}/tasks/${taskId}/complete`, {
-    method: "PATCH",
+export async function toggleComplete(userId: string, taskId: string): Promise<Task> {
+  const task = await apiFetch<BackendTask>(`/api/${userId}/tasks/${taskId}/complete`, {
+    method: 'PATCH',
   });
+  return mapTask(task);
 }
