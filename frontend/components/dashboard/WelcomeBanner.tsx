@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useTaskContext } from '@/context/TaskContext';
+import { useSession } from '@/lib/auth-client';
 import { Button } from '@/components/ui/Button';
 
 export function WelcomeBanner() {
+  const { data: session } = useSession();
   const { state, dispatch } = useTaskContext();
+  const userName = session?.user?.name?.split(' ')[0] || 'there';
   const total = state.tasks.length;
   const completed = state.tasks.filter(t => t.completed).length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -23,7 +26,7 @@ export function WelcomeBanner() {
 
       <div className="relative z-10">
         <p className="text-indigo-200 text-sm font-medium mb-1">{greeting},</p>
-        <h2 className="text-2xl font-extrabold mb-1">Shehroz</h2>
+        <h2 className="text-2xl font-extrabold mb-1">{userName}</h2>
         <p className="text-indigo-200 text-sm mb-5">
           You've completed <strong className="text-white">{completed} of {total}</strong> tasks today.
         </p>
