@@ -10,6 +10,7 @@ import { neon } from "@neondatabase/serverless";
 import * as schema from "./auth-schema";
 
 const baseURL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
+const isProduction = baseURL.startsWith("https://");
 const sql = neon(process.env.DATABASE_URL!);
 const db = drizzle(sql, { schema });
 
@@ -31,7 +32,7 @@ export const auth = betterAuth({
   },
   advanced: {
     defaultCookieAttributes: {
-      secure: true,
+      secure: isProduction,
       sameSite: "lax",
       path: "/",
     },
