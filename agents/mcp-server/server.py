@@ -16,7 +16,7 @@ import os
 
 MCP_PORT = int(os.environ.get("PORT", "8001"))
 
-mcp = FastMCP("todo-platform", port=MCP_PORT)
+mcp = FastMCP("todo-platform", host="0.0.0.0", port=MCP_PORT)
 
 
 async def _validate_user(session, user_id: str) -> User | None:
