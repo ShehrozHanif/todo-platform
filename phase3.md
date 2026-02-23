@@ -257,9 +257,9 @@ Main Claude
 - [x] Chat UI page at `/chat` in the Next.js frontend
 - [x] New DB tables: `conversation`, `message`
 - [x] Conversation + Message models
-- [ ] MCP Server deployed on Render
-- [ ] Backend (with AI Agent) deployed on Vercel
-- [ ] Chat UI deployed on Vercel
+- [x] MCP Server deployed on Render (https://todo-mcp-server-ept4.onrender.com)
+- [x] Backend (with AI Agent) deployed on Vercel (https://backend-beta-green-78.vercel.app)
+- [x] Chat UI deployed on Vercel (https://frontend-eight-coral-50.vercel.app/chat)
 - [x] End-to-end test: user chats → AI calls MCP → task appears in dashboard (local)
 
 ---
