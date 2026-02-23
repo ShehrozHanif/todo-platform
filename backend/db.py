@@ -102,11 +102,13 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     We only create 'task' — no FK dependency on user table ordering.
     contracts/db-operations.md §lifespan | research.md R5
     """
-    from models import Task  # noqa: F401 — registers Task metadata only
+    from models import Task, Conversation, Message  # noqa: F401
 
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Task.__table__.create, checkfirst=True)  # type: ignore[attr-defined]
+        await conn.run_sync(Conversation.__table__.create, checkfirst=True)  # type: ignore[attr-defined]
+        await conn.run_sync(Message.__table__.create, checkfirst=True)  # type: ignore[attr-defined]
 
     yield
 

@@ -4,10 +4,11 @@
 # Note: Input validation is enforced in schemas.py (TaskCreate / TaskUpdate).
 #       SQLModel table models with table=True bypass Pydantic validators on construction.
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, func
+from sqlalchemy import Column, DateTime, Text, func
 from sqlmodel import Field, SQLModel
 
 
@@ -69,6 +70,54 @@ class Task(SQLModel, table=True):
             DateTime(timezone=True),
             server_default=func.now(),
             onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+
+# --- Phase 3: Chat models ---
+
+
+class Conversation(SQLModel, table=True):
+    """A chat conversation owned by a user."""
+
+    __tablename__ = "conversation"
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex, primary_key=True)
+    user_id: str = Field(nullable=False, index=True)
+    created_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            nullable=False,
+        ),
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
+            onupdate=func.now(),
+            nullable=False,
+        ),
+    )
+
+
+class Message(SQLModel, table=True):
+    """A single message in a conversation."""
+
+    __tablename__ = "message"
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex, primary_key=True)
+    conversation_id: str = Field(nullable=False, index=True)
+    role: str = Field(nullable=False)  # "user" or "assistant"
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    created_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True),
+            server_default=func.now(),
             nullable=False,
         ),
     )

@@ -133,3 +133,17 @@ export async function toggleComplete(userId: string, taskId: string): Promise<Ta
   });
   return mapTask(task);
 }
+
+// ── Chat API ──────────────────────────────────────────
+
+interface ChatResponse {
+  response: string;
+  conversation_id: string;
+}
+
+export async function sendChatMessage(userId: string, message: string): Promise<ChatResponse> {
+  return apiFetch<ChatResponse>(`/api/${userId}/chat`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
+}

@@ -57,6 +57,7 @@ function taskReducer(state: TaskState, action: InternalAction): TaskState {
 interface TaskContextValue {
   state: TaskState;
   dispatch: (action: TaskAction) => void;
+  refreshTasks: () => void;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -76,6 +77,14 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Load tasks from backend on login
   useEffect(() => {
+    if (!userId) return;
+    api.getTasks(userId)
+      .then(tasks => rawDispatch({ type: 'SET_TASKS', payload: tasks }))
+      .catch(console.error);
+  }, [userId]);
+
+  // Re-fetch tasks from backend (used after AI chat operations)
+  const refreshTasks = useCallback(() => {
     if (!userId) return;
     api.getTasks(userId)
       .then(tasks => rawDispatch({ type: 'SET_TASKS', payload: tasks }))
@@ -145,7 +154,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId]);
 
-  return <TaskContext.Provider value={{ state, dispatch }}>{children}</TaskContext.Provider>;
+  return <TaskContext.Provider value={{ state, dispatch, refreshTasks }}>{children}</TaskContext.Provider>;
 }
 
 export function useTaskContext() {

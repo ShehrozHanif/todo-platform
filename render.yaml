@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: todo-mcp-server
+    runtime: python
+    rootDir: agents/mcp-server
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.13.0"

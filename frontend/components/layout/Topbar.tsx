@@ -14,6 +14,7 @@ const pageTitles: Record<string, string> = {
   '/tasks': 'My Tasks',
   '/calendar': 'Calendar',
   '/analytics': 'Analytics',
+  '/chat': 'AI Chat',
 };
 
 export function Topbar() {
