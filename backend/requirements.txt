@@ -8,3 +8,5 @@ pydantic[email]>=2.9.0
 pyjwt[cryptography]>=2.9.0
 passlib[bcrypt]>=1.7.4
 httpx>=0.28.0
+openai-agents>=0.0.7
+openai-chatkit>=0.1.0
