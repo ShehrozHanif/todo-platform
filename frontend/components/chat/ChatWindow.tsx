@@ -10,8 +10,7 @@ import { sendChatMessage } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const CHATKIT_DOMAIN_KEY =
-  process.env.NEXT_PUBLIC_CHATKIT_DOMAIN_KEY || 'domain_pk_localhost_dev';
+const CHATKIT_DOMAIN_KEY = 'domain_pk_699f4531a0208194866da6aa1f550e6909be80cabf9b93f1';
 
 /** Fetch JWT from the /api/token bridge endpoint. */
 async function getToken(): Promise<string | null> {
