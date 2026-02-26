@@ -1,15 +1,12 @@
 # [Task]: T005 [From]: specs/phase3-chatbot/chat-ui/spec.md §ChatKit Backend
 # ChatKit Python SDK server — bridges OpenAI ChatKit frontend to our
 # Agents SDK + MCP tool pipeline.
-# Bonus features: voice transcription, suggestion widgets, multi-language, conversation memory.
+# Bonus features: voice transcription (Whisper), thread history, multi-language.
 
-import json
 import os
-import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import AsyncIterator
-from uuid import uuid4
 
 import openai
 from agents import Agent, Runner
@@ -31,9 +28,7 @@ from chatkit.types import (
     ThreadItem,
     ThreadMetadata,
     UserMessageItem,
-    WidgetItem,
 )
-from chatkit.widgets import BasicRoot, Button, Row
 
 MCP_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8001/sse")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -148,7 +143,8 @@ class InMemoryStore(Store[dict]):
 
 
 # ---------------------------------------------------------------------------
-# System prompt — includes context awareness, language matching, smart suggestions
+# System prompt — context awareness + multi-language (NO suggestion markers
+# since ChatKit streams text character-by-character and can't strip markers)
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """You are TaskFlow Assistant, an AI that helps users manage their to-do tasks.
 You have access to tools that can add, list, complete, delete, and update tasks.
@@ -175,57 +171,8 @@ Context awareness:
 Language:
 - Always respond in the SAME language the user writes in.
 - If the user writes in Urdu, respond in Urdu. If Spanish, respond in Spanish. If Arabic, respond in Arabic.
-- Generate suggestion chips in the user's language too.
 - If the user switches languages mid-conversation, match their latest message language.
-
-Smart suggestions:
-- After EVERY response, append exactly this format on its own line at the very end:
-  <!--suggestions:["suggestion 1","suggestion 2","suggestion 3"]-->
-- Generate 2-3 short, contextual follow-up suggestions based on what just happened.
-- Suggestions should be natural language commands the user might want to do next.
-- Examples after adding a task: <!--suggestions:["List all tasks","Add another task","Complete a task"]-->
-- Examples after listing tasks: <!--suggestions:["Complete task 1","Add a new task","Delete a task"]-->
-- ALWAYS include the suggestions line. Never skip it.
 """
-
-_SUGGESTIONS_RE = re.compile(r"<!--suggestions:(\[.*?\])-->", re.DOTALL)
-
-
-def _parse_suggestions(text: str) -> tuple[str, list[str]]:
-    """Extract suggestion chips from AI response text."""
-    match = _SUGGESTIONS_RE.search(text)
-    if not match:
-        return text, []
-    try:
-        suggestions = json.loads(match.group(1))
-        if not isinstance(suggestions, list):
-            return text, []
-    except (json.JSONDecodeError, ValueError):
-        return text, []
-    clean_text = _SUGGESTIONS_RE.sub("", text).rstrip()
-    return clean_text, [s for s in suggestions[:3] if isinstance(s, str) and s.strip()]
-
-
-def _build_suggestion_widget(suggestions: list[str]) -> BasicRoot:
-    """Build a ChatKit widget with suggestion buttons."""
-    buttons = [
-        Button(
-            label=s,
-            variant="soft",
-            color="discovery",
-            size="sm",
-            pill=True,
-            onClickAction={"type": "send_suggestion", "payload": {"text": s}},
-        )
-        for s in suggestions
-    ]
-    return BasicRoot(
-        type="Basic",
-        direction="row",
-        gap=8,
-        padding={"top": 4, "bottom": 4},
-        children=buttons,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -233,12 +180,11 @@ def _build_suggestion_widget(suggestions: list[str]) -> BasicRoot:
 # ---------------------------------------------------------------------------
 class TaskFlowChatKitServer(ChatKitServer[dict]):
 
-    # -- Bonus 1: Voice Input (transcription) --------------------------------
+    # -- Bonus 1: Voice Input (transcription via OpenAI Whisper) -------------
     async def transcribe(
         self, audio_input: AudioInput, context: dict
     ) -> TranscriptionResult:
         """Transcribe voice audio using OpenAI Whisper API."""
-        # Determine file extension from MIME type
         ext_map = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a"}
         ext = ext_map.get(audio_input.media_type, "webm")
 
@@ -248,7 +194,7 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
         )
         return TranscriptionResult(text=transcript.text)
 
-    # -- Main response handler with suggestion widgets -----------------------
+    # -- Main response handler -----------------------------------------------
     async def respond(
         self,
         thread: ThreadMetadata,
@@ -281,29 +227,8 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
                 thread=thread, store=self.store, request_context=context,
             )
             result = Runner.run_streamed(agent, input_items, context=agent_context)
-
-            # Stream the agent response events
             async for event in stream_agent_response(agent_context, result):
                 yield event
-
-                # After an assistant message is done, check for suggestion markers
-                # and emit a suggestion widget
-                if isinstance(event, ThreadItemDoneEvent):
-                    item = event.item
-                    if isinstance(item, AssistantMessageItem) and item.content:
-                        # Find text content and parse suggestions
-                        for content_part in item.content:
-                            if hasattr(content_part, "text"):
-                                clean_text, suggestions = _parse_suggestions(
-                                    content_part.text
-                                )
-                                if suggestions:
-                                    # Update the text to remove suggestion markers
-                                    content_part.text = clean_text
-                                    # Emit a suggestion widget
-                                    await agent_context.stream_widget(
-                                        _build_suggestion_widget(suggestions)
-                                    )
 
 
 # Singleton instances

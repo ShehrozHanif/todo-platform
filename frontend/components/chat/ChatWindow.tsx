@@ -179,21 +179,19 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
 
       await new Promise(r => requestAnimationFrame(r));
 
+      // Only fail on initialization errors, not runtime/streaming errors
+      let initialized = false;
       el.addEventListener('chatkit.error', (evt: any) => {
         console.warn('[ChatKit] Error:', evt?.detail || evt);
-        onFail();
+        if (!initialized) onFail();
+      });
+
+      el.addEventListener('chatkit.ready', () => {
+        initialized = true;
       });
 
       el.addEventListener('chatkit.response.end', () => {
         refreshTasks();
-      });
-
-      // Bonus 3: Handle suggestion widget button clicks
-      el.addEventListener('chatkit.effect', (evt: any) => {
-        const detail = evt?.detail;
-        if (detail?.name === 'send_suggestion' && detail?.data?.text) {
-          el.sendUserMessage({ text: detail.data.text });
-        }
       });
 
       if (typeof el.setOptions === 'function') {
@@ -225,18 +223,9 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
             },
             // Bonus 2: Conversation Memory — ChatKit thread history panel
             history: { enabled: true, showDelete: true, showRename: true },
-            // Bonus 3: Smart Suggestions — rendered as widgets by the server
-            // (handled in chatkit_server.py via widget buttons)
+            // Bonus 3: Smart Suggestions — ChatKit start screen prompts
             // Bonus 4: Multi-Language — ChatKit auto-detects browser locale
             // Server responds in user's language via system prompt
-            // Bonus 3: Widget actions — suggestion buttons trigger new messages
-            widgets: {
-              onAction: async (action: { type: string; payload?: Record<string, unknown> }) => {
-                if (action.type === 'send_suggestion' && action.payload?.text) {
-                  await el.sendUserMessage({ text: action.payload.text as string });
-                }
-              },
-            },
           });
         } catch (err) {
           console.warn('[ChatKit] setOptions failed:', err);
