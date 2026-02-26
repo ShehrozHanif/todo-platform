@@ -3,10 +3,11 @@
 // [Task]: T005-T006 [From]: specs/phase3-chatbot/conversation-memory/spec.md §History + New Chat
 // OpenAI ChatKit integration — uses @openai/chatkit-react to render
 // the ChatKit web component connected to our chatkit-python backend.
-// Falls back to custom chat if ChatKit fails (domain verification etc).
+// On Vercel: ChatKit with bonus overlays (voice, new chat, multi-language).
+// On localhost: FallbackChat with all bonus features (voice, memory, suggestions, RTL).
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
 import { sendChatMessage, getChatHistory } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
@@ -26,12 +27,119 @@ async function getToken(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// ChatKit mode — uses the official @openai/chatkit-react component
+// Voice input hook — shared between ChatKit and Fallback modes
 // ---------------------------------------------------------------------------
-function ChatKitView({ onFail }: { onFail: () => void }) {
+function useVoiceInput() {
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const supported =
+      typeof window !== 'undefined' &&
+      ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+    setSpeechSupported(supported);
+
+    if (supported) {
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SR();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event: any) => {
+        setTranscript(event.results[0][0].transcript);
+      };
+      recognitionRef.current.onerror = () => setIsListening(false);
+      recognitionRef.current.onend = () => setIsListening(false);
+    }
+
+    return () => { recognitionRef.current?.stop(); };
+  }, []);
+
+  function toggle() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      setTranscript('');
+      recognitionRef.current?.start();
+      setIsListening(true);
+    }
+  }
+
+  return { isListening, speechSupported, transcript, toggle, setTranscript };
+}
+
+// ---------------------------------------------------------------------------
+// Mic button component — shared UI
+// ---------------------------------------------------------------------------
+function MicButton({ isListening, disabled, onClick }: {
+  isListening: boolean; disabled: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+        isListening
+          ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+          : 'bg-gray-200 hover:bg-gray-300 dark:bg-[#252742] dark:hover:bg-[#2D2F4A] text-gray-700 dark:text-gray-300'
+      }`}
+      title={isListening ? 'Stop listening' : 'Start voice input'}
+    >
+      {isListening ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="2" />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+          <path d="M19 10v2a7 7 0 01-14 0v-2" />
+          <path d="M12 19v4" />
+          <path d="M8 23h8" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ChatKit mode — OpenAI ChatKit widget with bonus overlays
+// ---------------------------------------------------------------------------
+function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
+  const chatkitElRef = useRef<any>(null);
   const { refreshTasks } = useTaskContext();
+  const { data: session } = useSession();
+  const voice = useVoiceInput();
+
+  // Inject voice transcript into ChatKit's input field
+  useEffect(() => {
+    if (!voice.transcript) return;
+    const el = chatkitElRef.current;
+    if (!el) return;
+
+    // Try to find ChatKit's internal input via shadow DOM
+    const shadow = el.shadowRoot;
+    if (shadow) {
+      const textarea = shadow.querySelector('textarea') || shadow.querySelector('input[type="text"]');
+      if (textarea) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        )?.set || Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        )?.set;
+        if (nativeInputValueSetter) {
+          nativeInputValueSetter.call(textarea, voice.transcript);
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    }
+    voice.setTranscript('');
+  }, [voice.transcript, voice]);
 
   useEffect(() => {
     if (mountedRef.current) return;
@@ -40,7 +148,6 @@ function ChatKitView({ onFail }: { onFail: () => void }) {
     let cancelled = false;
 
     async function mount() {
-      // 1. Wait for CDN to define the custom element (max 8s)
       if (!customElements.get('openai-chatkit')) {
         try {
           await Promise.race([
@@ -54,7 +161,6 @@ function ChatKitView({ onFail }: { onFail: () => void }) {
       }
       if (cancelled || !containerRef.current) return;
 
-      // 2. Dynamically import the React bindings (avoids SSR issues)
       let ChatKitReact: typeof import('@openai/chatkit-react');
       try {
         ChatKitReact = await import('@openai/chatkit-react');
@@ -64,29 +170,32 @@ function ChatKitView({ onFail }: { onFail: () => void }) {
       }
       if (cancelled || !containerRef.current) return;
 
-      // 3. Get auth token
       const token = await getToken();
 
-      // 4. Create the element and configure it
       const el = document.createElement('openai-chatkit') as any;
       el.style.cssText = 'width:100%;height:100%;display:block;border:none';
       containerRef.current.appendChild(el);
+      chatkitElRef.current = el;
 
-      // Wait for the element to connect to DOM
       await new Promise(r => requestAnimationFrame(r));
 
-      // Listen for errors (domain verification failure etc)
       el.addEventListener('chatkit.error', (evt: any) => {
         console.warn('[ChatKit] Error:', evt?.detail || evt);
         onFail();
       });
 
-      // Refresh tasks when AI finishes a response
       el.addEventListener('chatkit.response.end', () => {
         refreshTasks();
       });
 
-      // Wait for custom element internal ready state
+      // Bonus 3: Handle suggestion widget button clicks
+      el.addEventListener('chatkit.effect', (evt: any) => {
+        const detail = evt?.detail;
+        if (detail?.name === 'send_suggestion' && detail?.data?.text) {
+          el.sendUserMessage({ text: detail.data.text });
+        }
+      });
+
       if (typeof el.setOptions === 'function') {
         try {
           el.setOptions({
@@ -109,7 +218,25 @@ function ChatKitView({ onFail }: { onFail: () => void }) {
                 { label: 'What tasks?', prompt: 'What tasks do I have?', icon: 'sparkle' as const },
               ],
             },
-            composer: { placeholder: 'Ask me to manage your tasks...' },
+            // Bonus 1: Voice Input — ChatKit's built-in dictation (uses server transcribe())
+            composer: {
+              placeholder: 'Ask me to manage your tasks...',
+              dictation: { enabled: true },
+            },
+            // Bonus 2: Conversation Memory — ChatKit thread history panel
+            history: { enabled: true, showDelete: true, showRename: true },
+            // Bonus 3: Smart Suggestions — rendered as widgets by the server
+            // (handled in chatkit_server.py via widget buttons)
+            // Bonus 4: Multi-Language — ChatKit auto-detects browser locale
+            // Server responds in user's language via system prompt
+            // Bonus 3: Widget actions — suggestion buttons trigger new messages
+            widgets: {
+              onAction: async (action: { type: string; payload?: Record<string, unknown> }) => {
+                if (action.type === 'send_suggestion' && action.payload?.text) {
+                  await el.sendUserMessage({ text: action.payload.text as string });
+                }
+              },
+            },
           });
         } catch (err) {
           console.warn('[ChatKit] setOptions failed:', err);
@@ -122,36 +249,48 @@ function ChatKitView({ onFail }: { onFail: () => void }) {
         return;
       }
 
-      // 5. Watchdog — if after 5s the element has no visible content, fail
       setTimeout(() => {
         if (cancelled) return;
         const rect = el.getBoundingClientRect();
         const shadow = el.shadowRoot;
         const hasIframe = shadow?.querySelector('iframe');
         if (rect.height < 20 && !hasIframe) {
-          console.warn('[ChatKit] Element did not render (domain verification may have failed)');
+          console.warn('[ChatKit] Element did not render');
           onFail();
         }
       }, 5000);
     }
 
     mount();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [onFail, refreshTasks]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: '100%' }}
-    />
+    <div className="flex flex-col h-full relative">
+      {/* ChatKit fills the space */}
+      <div ref={containerRef} className="flex-1" style={{ minHeight: 0 }} />
+
+      {/* Floating bonus toolbar — voice input + info */}
+      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2 z-10">
+        {voice.speechSupported && (
+          <MicButton
+            isListening={voice.isListening}
+            disabled={!session?.user?.id}
+            onClick={voice.toggle}
+          />
+        )}
+        {voice.isListening && (
+          <div className="px-3 py-1.5 rounded-lg bg-red-500/90 text-white text-[11px] font-medium animate-pulse">
+            Listening...
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Fallback chat — always works, uses existing POST /api/{user_id}/chat
+// Fallback chat — full featured, uses POST /api/{user_id}/chat
 // ---------------------------------------------------------------------------
 interface ChatMessage {
   id: string;
@@ -172,7 +311,6 @@ const SUGGESTIONS = [
 /** Detect RTL scripts: Arabic, Hebrew, Urdu, Farsi */
 function isRtl(text: string): boolean {
   const rtlRegex = /[\u0591-\u07FF\u0860-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]/;
-  // Check first non-whitespace characters
   const trimmed = text.trimStart();
   return rtlRegex.test(trimmed.charAt(0)) || rtlRegex.test(trimmed.charAt(1));
 }
@@ -183,22 +321,27 @@ function FallbackChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(false);
   const [isNewChat, setIsNewChat] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const voice = useVoiceInput();
 
   const userId = session?.user?.id;
   const userName = session?.user?.name?.split(' ')[0] || 'there';
 
-  // Load conversation history on mount (FR-004)
+  // Inject voice transcript into input
+  useEffect(() => {
+    if (voice.transcript) {
+      setInput(voice.transcript);
+      voice.setTranscript('');
+    }
+  }, [voice.transcript, voice]);
+
+  // Load conversation history on mount
   useEffect(() => {
     if (!userId || historyLoaded) return;
     setHistoryLoaded(true);
-
     getChatHistory(userId)
       .then((data) => {
         if (data.messages && data.messages.length > 0) {
@@ -212,53 +355,12 @@ function FallbackChat() {
           );
         }
       })
-      .catch(() => {
-        // Silently fail — show empty state (FR-007)
-      });
+      .catch(() => {});
   }, [userId, historyLoaded]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Check for speech recognition support on component mount
-  useEffect(() => {
-    const isSpeechSupported =
-      typeof window !== 'undefined' &&
-      ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
-
-    setSpeechSupported(isSpeechSupported);
-
-    if (isSpeechSupported) {
-      // Initialize speech recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
-
-      recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        setIsListening(false);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-      };
-    }
-
-    // Cleanup on unmount
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, []);
 
   function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setInput(e.target.value);
@@ -314,24 +416,6 @@ function FallbackChat() {
     }
   }
 
-  function handleVoiceInput() {
-    if (!speechSupported || loading || !userId) return;
-
-    if (isListening) {
-      // Stop listening
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-    } else {
-      // Start listening
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-        setIsListening(true);
-      }
-    }
-  }
-
   function handleNewChat() {
     setMessages([]);
     setIsNewChat(true);
@@ -339,7 +423,6 @@ function FallbackChat() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* New Chat button — visible only when messages exist */}
       {messages.length > 0 && (
         <div className="flex justify-end px-4 md:px-6 pt-2">
           <button
@@ -366,7 +449,7 @@ function FallbackChat() {
               I&apos;m your TaskFlow AI assistant. I can add, list, complete, update, and delete your tasks using natural language.
             </p>
             <div className="flex items-center gap-1.5 mb-5">
-              <span className="text-[11px] text-indigo-500 font-medium">Powered by OpenAI ChatKit</span>
+              <span className="text-[11px] text-indigo-500 font-medium">Powered by OpenAI Agents SDK</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-indigo-500">
                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -402,7 +485,6 @@ function FallbackChat() {
                     </p>
                   </div>
                 </div>
-                {/* Smart suggestion chips — shown below latest AI message */}
                 {showSuggestions && (
                   <div className={`flex flex-wrap gap-2 mt-2 ${rtl ? 'mr-11 justify-end' : 'ml-11'}`} dir={rtl ? 'rtl' : undefined}>
                     {msg.suggestions!.map((s) => (
@@ -452,32 +534,12 @@ function FallbackChat() {
                 className="w-full bg-transparent border-none outline-none text-[14px] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#5B6180] resize-none leading-relaxed"
               />
             </div>
-            {/* [Task]: T005 [From]: specs/phase3-chatbot/voice-input/spec.md §FR-002,FR-008 */}
-            {/* Microphone Button — hidden on unsupported browsers (FR-002) */}
-            {speechSupported && (
-              <button
-                onClick={handleVoiceInput}
+            {voice.speechSupported && (
+              <MicButton
+                isListening={voice.isListening}
                 disabled={loading || !userId}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isListening
-                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-[#252742] dark:hover:bg-[#2D2F4A] text-gray-700 dark:text-gray-300'
-                }`}
-                title={isListening ? "Stop listening" : "Start voice input"}
-              >
-                {isListening ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
-                  </svg>
-                ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
-                    <path d="M19 10v2a7 7 0 01-14 0v-2" />
-                    <path d="M12 19v4" />
-                    <path d="M8 23h8" />
-                  </svg>
-                )}
-              </button>
+                onClick={voice.toggle}
+              />
             )}
             <button
               onClick={() => handleSend()}
@@ -489,7 +551,7 @@ function FallbackChat() {
           </div>
         </div>
         <p className="text-center text-[11px] text-gray-400 dark:text-[#5B6180] mt-2">
-          Powered by OpenAI ChatKit &middot; TaskFlow AI manages your tasks
+          Powered by OpenAI Agents SDK &middot; TaskFlow AI manages your tasks
         </p>
       </div>
     </div>
@@ -497,11 +559,22 @@ function FallbackChat() {
 }
 
 // ---------------------------------------------------------------------------
-// Main export — always uses FallbackChat which has all bonus features
-// (voice input, conversation memory, smart suggestions, multi-language RTL).
-// ChatKitView is retained but not used by default since it's a third-party
-// widget that doesn't support our custom bonus features.
+// Main export — ChatKit on Vercel, FallbackChat on localhost
 // ---------------------------------------------------------------------------
 export function ChatWindow() {
-  return <FallbackChat />;
+  const isLocalhost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const [mode, setMode] = useState<'chatkit' | 'fallback'>(isLocalhost ? 'fallback' : 'chatkit');
+
+  const handleFail = useCallback(() => {
+    console.warn('[ChatKit] Falling back to custom chat UI');
+    setMode('fallback');
+  }, []);
+
+  if (mode === 'fallback') {
+    return <FallbackChat />;
+  }
+
+  return <ChatKitWithBonuses onFail={handleFail} />;
 }
