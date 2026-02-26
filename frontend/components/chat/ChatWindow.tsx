@@ -497,23 +497,11 @@ function FallbackChat() {
 }
 
 // ---------------------------------------------------------------------------
-// Main export — tries ChatKit first, falls back gracefully
+// Main export — always uses FallbackChat which has all bonus features
+// (voice input, conversation memory, smart suggestions, multi-language RTL).
+// ChatKitView is retained but not used by default since it's a third-party
+// widget that doesn't support our custom bonus features.
 // ---------------------------------------------------------------------------
 export function ChatWindow() {
-  // Skip ChatKit on localhost — domain key only works on deployed Vercel domain
-  const isLocalhost = typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
-  const [mode, setMode] = useState<'chatkit' | 'fallback'>(isLocalhost ? 'fallback' : 'chatkit');
-
-  const handleFail = useCallback(() => {
-    console.warn('[ChatKit] Falling back to custom chat UI');
-    setMode('fallback');
-  }, []);
-
-  if (mode === 'fallback') {
-    return <FallbackChat />;
-  }
-
-  return <ChatKitView onFail={handleFail} />;
+  return <FallbackChat />;
 }
