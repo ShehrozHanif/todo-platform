@@ -1,4 +1,6 @@
 // [Task]: T005 [From]: specs/phase3-chatbot/chat-ui/spec.md §Chat Window
+// [Task]: T001-T008 [From]: specs/phase3-chatbot/voice-input/spec.md §Voice Input (Bonus 1)
+// [Task]: T005-T006 [From]: specs/phase3-chatbot/conversation-memory/spec.md §History + New Chat
 // OpenAI ChatKit integration — uses @openai/chatkit-react to render
 // the ChatKit web component connected to our chatkit-python backend.
 // Falls back to custom chat if ChatKit fails (domain verification etc).
@@ -6,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { sendChatMessage } from '@/lib/api';
+import { sendChatMessage, getChatHistory } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -156,6 +158,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  suggestions?: string[];
 }
 
 const SUGGESTIONS = [
@@ -165,21 +168,97 @@ const SUGGESTIONS = [
   { label: 'What tasks?', prompt: 'What tasks do I have?' },
 ];
 
+// [Task]: T002 [From]: specs/phase3-chatbot/multi-language/spec.md §FR-003
+/** Detect RTL scripts: Arabic, Hebrew, Urdu, Farsi */
+function isRtl(text: string): boolean {
+  const rtlRegex = /[\u0591-\u07FF\u0860-\u08FF\uFB1D-\uFDFD\uFE70-\uFEFC]/;
+  // Check first non-whitespace characters
+  const trimmed = text.trimStart();
+  return rtlRegex.test(trimmed.charAt(0)) || rtlRegex.test(trimmed.charAt(1));
+}
+
 function FallbackChat() {
   const { data: session } = useSession();
   const { refreshTasks } = useTaskContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isNewChat, setIsNewChat] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   const userId = session?.user?.id;
   const userName = session?.user?.name?.split(' ')[0] || 'there';
 
+  // Load conversation history on mount (FR-004)
+  useEffect(() => {
+    if (!userId || historyLoaded) return;
+    setHistoryLoaded(true);
+
+    getChatHistory(userId)
+      .then((data) => {
+        if (data.messages && data.messages.length > 0) {
+          setMessages(
+            data.messages.map((m, i) => ({
+              id: `history-${i}`,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              timestamp: new Date(m.timestamp || Date.now()),
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        // Silently fail — show empty state (FR-007)
+      });
+  }, [userId, historyLoaded]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Check for speech recognition support on component mount
+  useEffect(() => {
+    const isSpeechSupported =
+      typeof window !== 'undefined' &&
+      ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+
+    setSpeechSupported(isSpeechSupported);
+
+    if (isSpeechSupported) {
+      // Initialize speech recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setInput(e.target.value);
@@ -200,10 +279,17 @@ function FallbackChat() {
     setLoading(true);
 
     try {
-      const res = await sendChatMessage(userId, msg);
+      const res = await sendChatMessage(userId, msg, isNewChat);
+      if (isNewChat) setIsNewChat(false);
       setMessages(prev => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: 'assistant', content: res.response, timestamp: new Date() },
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: res.response,
+          timestamp: new Date(),
+          suggestions: res.suggestions,
+        },
       ]);
       refreshTasks();
     } catch (err) {
@@ -228,8 +314,45 @@ function FallbackChat() {
     }
   }
 
+  function handleVoiceInput() {
+    if (!speechSupported || loading || !userId) return;
+
+    if (isListening) {
+      // Stop listening
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      // Start listening
+      if (recognitionRef.current) {
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
+    }
+  }
+
+  function handleNewChat() {
+    setMessages([]);
+    setIsNewChat(true);
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* New Chat button — visible only when messages exist */}
+      {messages.length > 0 && (
+        <div className="flex justify-end px-4 md:px-6 pt-2">
+          <button
+            onClick={handleNewChat}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-gray-600 dark:text-[#9CA3C8] bg-gray-100 dark:bg-[#1C1D30] hover:bg-gray-200 dark:hover:bg-[#252742] border border-gray-200 dark:border-[#252742] transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Chat
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
@@ -257,23 +380,42 @@ function FallbackChat() {
             </div>
           </div>
         ) : (
-          messages.map(msg => {
+          messages.map((msg, idx) => {
             const isUser = msg.role === 'user';
+            const isLastAssistant = !isUser && idx === messages.length - 1;
+            const showSuggestions = isLastAssistant && msg.suggestions && msg.suggestions.length > 0 && !loading;
+            const rtl = isRtl(msg.content);
             return (
-              <div key={msg.id} className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-gray-200 dark:bg-[#252742]' : 'bg-gradient-to-br from-indigo-600 to-violet-600'}`}>
-                  {isUser ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-gray-600 dark:text-[#9CA3C8]"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
-                  )}
+              <div key={msg.id}>
+                <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUser ? 'bg-gray-200 dark:bg-[#252742]' : 'bg-gradient-to-br from-indigo-600 to-violet-600'}`}>
+                    {isUser ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-gray-600 dark:text-[#9CA3C8]"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
+                    )}
+                  </div>
+                  <div className={`max-w-[80%] md:max-w-[65%] rounded-2xl px-4 py-2.5 ${isUser ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-gray-100 dark:bg-[#1C1D30] text-gray-900 dark:text-white rounded-tl-sm'}`}>
+                    <p className="text-[14px] leading-relaxed whitespace-pre-wrap" dir={rtl ? 'rtl' : undefined}>{msg.content}</p>
+                    <p className={`text-[10px] mt-1 ${isUser ? 'text-indigo-200' : 'text-gray-400 dark:text-[#5B6180]'}`}>
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
                 </div>
-                <div className={`max-w-[80%] md:max-w-[65%] rounded-2xl px-4 py-2.5 ${isUser ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-gray-100 dark:bg-[#1C1D30] text-gray-900 dark:text-white rounded-tl-sm'}`}>
-                  <p className="text-[14px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                  <p className={`text-[10px] mt-1 ${isUser ? 'text-indigo-200' : 'text-gray-400 dark:text-[#5B6180]'}`}>
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
+                {/* Smart suggestion chips — shown below latest AI message */}
+                {showSuggestions && (
+                  <div className={`flex flex-wrap gap-2 mt-2 ${rtl ? 'mr-11 justify-end' : 'ml-11'}`} dir={rtl ? 'rtl' : undefined}>
+                    {msg.suggestions!.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => handleSend(s)}
+                        className="px-3 py-1.5 rounded-full text-[12px] font-medium border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 bg-white dark:bg-[#1C1D30] hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-500 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })
@@ -297,25 +439,54 @@ function FallbackChat() {
 
       <div className="border-t border-gray-200 dark:border-[#252742] px-4 md:px-6 py-3 bg-white dark:bg-[#151628]">
         <div className="flex items-end gap-2 max-w-3xl mx-auto">
-          <div className="flex-1 bg-gray-100 dark:bg-[#1C1D30] border border-gray-200 dark:border-[#252742] rounded-xl px-4 py-2.5 focus-within:border-indigo-500 transition-colors">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask me to manage your tasks..."
-              rows={1}
-              disabled={loading || !userId}
-              className="w-full bg-transparent border-none outline-none text-[14px] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#5B6180] resize-none leading-relaxed"
-            />
+          <div className="flex items-center gap-2 w-full">
+            <div className="flex-1 bg-gray-100 dark:bg-[#1C1D30] border border-gray-200 dark:border-[#252742] rounded-xl px-4 py-2.5 focus-within:border-indigo-500 transition-colors">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask me to manage your tasks..."
+                rows={1}
+                disabled={loading || !userId}
+                className="w-full bg-transparent border-none outline-none text-[14px] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-[#5B6180] resize-none leading-relaxed"
+              />
+            </div>
+            {/* [Task]: T005 [From]: specs/phase3-chatbot/voice-input/spec.md §FR-002,FR-008 */}
+            {/* Microphone Button — hidden on unsupported browsers (FR-002) */}
+            {speechSupported && (
+              <button
+                onClick={handleVoiceInput}
+                disabled={loading || !userId}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isListening
+                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                    : 'bg-gray-200 hover:bg-gray-300 dark:bg-[#252742] dark:hover:bg-[#2D2F4A] text-gray-700 dark:text-gray-300'
+                }`}
+                title={isListening ? "Stop listening" : "Start voice input"}
+              >
+                {isListening ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                    <path d="M19 10v2a7 7 0 01-14 0v-2" />
+                    <path d="M12 19v4" />
+                    <path d="M8 23h8" />
+                  </svg>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || loading || !userId}
+              className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-all duration-200 flex-shrink-0 active:scale-95"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4z" /></svg>
+            </button>
           </div>
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || loading || !userId}
-            className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white transition-all duration-200 flex-shrink-0 active:scale-95"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 2L11 13" /><path d="M22 2L15 22l-4-9-9-4z" /></svg>
-          </button>
         </div>
         <p className="text-center text-[11px] text-gray-400 dark:text-[#5B6180] mt-2">
           Powered by OpenAI ChatKit &middot; TaskFlow AI manages your tasks
@@ -329,7 +500,11 @@ function FallbackChat() {
 // Main export — tries ChatKit first, falls back gracefully
 // ---------------------------------------------------------------------------
 export function ChatWindow() {
-  const [mode, setMode] = useState<'chatkit' | 'fallback'>('chatkit');
+  // Skip ChatKit on localhost — domain key only works on deployed Vercel domain
+  const isLocalhost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const [mode, setMode] = useState<'chatkit' | 'fallback'>(isLocalhost ? 'fallback' : 'chatkit');
 
   const handleFail = useCallback(() => {
     console.warn('[ChatKit] Falling back to custom chat UI');

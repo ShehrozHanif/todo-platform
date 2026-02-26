@@ -139,11 +139,32 @@ export async function toggleComplete(userId: string, taskId: string): Promise<Ta
 interface ChatResponse {
   response: string;
   conversation_id: string;
+  suggestions?: string[];
 }
 
-export async function sendChatMessage(userId: string, message: string): Promise<ChatResponse> {
+export async function sendChatMessage(
+  userId: string,
+  message: string,
+  newConversation = false,
+): Promise<ChatResponse> {
   return apiFetch<ChatResponse>(`/api/${userId}/chat`, {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, new_conversation: newConversation }),
   });
+}
+
+// [Task]: T004 [From]: specs/phase3-chatbot/conversation-memory/spec.md §FR-001
+interface ChatHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+interface ChatHistoryResponse {
+  messages: ChatHistoryMessage[];
+  conversation_id: string | null;
+}
+
+export async function getChatHistory(userId: string): Promise<ChatHistoryResponse> {
+  return apiFetch<ChatHistoryResponse>(`/api/${userId}/chat/history`);
 }

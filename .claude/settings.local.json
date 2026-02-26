@@ -12,7 +12,19 @@
       "Bash(npx vercel:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/frontend\" && node -e \"\nrequire\\('dotenv'\\).config\\({ path: '.env.local' }\\);\nconst url = process.env.DATABASE_URL;\nconsole.log\\('DATABASE_URL:', url\\);\nconst { neon } = require\\('@neondatabase/serverless'\\);\nconst sql = neon\\(url\\);\nsql.query\\('SELECT 1 as test'\\).then\\(r => console.log\\('Query OK:', r.rows\\)\\).catch\\(e => console.error\\('Error:', e.message\\)\\);\n\" 2>&1)",
+      "Bash(cd:*)",
+      "Bash(taskkill:*)",
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/frontend\" && npm ls @better-auth/core 2>&1)",
+      "WebFetch(domain:openai.github.io)",
+      "WebSearch",
+      "Bash(tail:*)",
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/backend\" && python -c \"from chatkit.server import ChatKitServer; print\\('ChatKitServer imported ok'\\)\" 2>&1)",
+      "Bash(head:*)",
+      "Bash(true:*)",
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/frontend\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/backend\" && uv run uvicorn main:app --reload --port 8000 2>&1)"
     ]
   }
 }
