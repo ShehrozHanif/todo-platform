@@ -218,7 +218,7 @@ export function Topbar() {
 
           {/* Notification dropdown */}
           {notifOpen && (
-            <div className="absolute right-0 top-[calc(100%+10px)] w-[calc(100vw-2rem)] md:w-80 bg-white dark:bg-[#1C1D30] border border-gray-200 dark:border-[#252742] rounded-xl shadow-xl overflow-hidden">
+            <div className="fixed left-2 right-2 top-16 md:absolute md:left-auto md:right-0 md:top-[calc(100%+10px)] md:w-80 bg-white dark:bg-[#1C1D30] border border-gray-200 dark:border-[#252742] rounded-xl shadow-xl overflow-hidden z-50">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-[#252742] flex items-center justify-between">
                 <h3 className="text-[13px] font-bold text-gray-900 dark:text-white">Notifications</h3>
                 {notifCount > 0 && (
