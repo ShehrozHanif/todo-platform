@@ -216,17 +216,33 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
     ) -> TranscriptionResult:
         """Transcribe voice audio using OpenAI Whisper API.
 
-        No language hint — Whisper auto-detects the spoken language so
-        English speech → English text, Urdu speech → Urdu text, etc.
+        Two-pass strategy for Urdu/Hindi disambiguation:
+        1. First pass: auto-detect language (no hint).
+        2. If the result contains Devanagari script (Hindi), re-transcribe
+           with language='ur' to get Urdu (Nastaliq/Arabic) script instead.
+        English and other languages pass through unchanged.
         """
         ext_map = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a"}
         ext = ext_map.get(audio_input.media_type, "webm")
+        file_tuple = (f"audio.{ext}", audio_input.data, audio_input.mime_type)
 
+        # Pass 1: auto-detect
         transcript = await _openai_client.audio.transcriptions.create(
             model="whisper-1",
-            file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
+            file=file_tuple,
         )
-        return TranscriptionResult(text=transcript.text)
+        text = transcript.text
+
+        # If Devanagari characters detected (Hindi), re-transcribe as Urdu
+        if any("\u0900" <= ch <= "\u097F" for ch in text):
+            transcript = await _openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
+                language="ur",
+            )
+            text = transcript.text
+
+        return TranscriptionResult(text=text)
 
     # -- Main response handler -----------------------------------------------
     async def respond(
