@@ -146,9 +146,7 @@ class InMemoryStore(Store[dict]):
 
 
 # ---------------------------------------------------------------------------
-# System prompt — context awareness + multi-language + smart suggestions
-# The <!--suggestions:--> markers stream as text but get parsed from the
-# final ThreadItemDoneEvent and sent as a ClientEffectEvent to the frontend.
+# System prompt — context awareness + multi-language
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """You are TaskFlow Assistant, an AI that helps users manage their to-do tasks.
 You have access to tools that can add, list, complete, delete, and update tasks.
@@ -175,34 +173,38 @@ Context awareness:
 Language:
 - Always respond in the SAME language the user writes in.
 - If the user writes in Urdu, respond in Urdu. If Spanish, respond in Spanish. If Arabic, respond in Arabic.
-- Generate suggestion chips in the user's language too.
 - If the user switches languages mid-conversation, match their latest message language.
-
-Smart suggestions:
-- After EVERY response, append exactly this format on its own line at the very end:
-  <!--suggestions:["suggestion 1","suggestion 2","suggestion 3"]-->
-- Generate 2-3 short, contextual follow-up suggestions based on what just happened.
-- Suggestions should be natural language commands the user might want to do next.
-- Examples after adding a task: <!--suggestions:["List all tasks","Add another task","Complete a task"]-->
-- Examples after listing tasks: <!--suggestions:["Complete task 1","Add a new task","Delete a task"]-->
-- ALWAYS include the suggestions line. Never skip it.
 """
 
-_SUGGESTIONS_RE = re.compile(r"<!--suggestions:(\[.*?\])-->", re.DOTALL)
+# ---------------------------------------------------------------------------
+# Smart suggestions — generated via a separate fast API call (never in chat)
+# ---------------------------------------------------------------------------
+_SUGGEST_PROMPT = """Based on this assistant response, generate 2-3 short follow-up suggestions the user might want to do next.
+Return ONLY a JSON array of strings, nothing else. Example: ["List all tasks","Add a new task","Delete a task"]
+Keep suggestions short (under 6 words each). Match the language of the assistant response.
+
+Assistant response:
+{response_text}"""
 
 
-def _parse_suggestions(text: str) -> list[str]:
-    """Extract suggestion chips from AI response text."""
-    match = _SUGGESTIONS_RE.search(text)
-    if not match:
-        return []
+async def _generate_suggestions(response_text: str) -> list[str]:
+    """Call a fast model to generate contextual suggestion chips."""
     try:
-        suggestions = json.loads(match.group(1))
-        if not isinstance(suggestions, list):
-            return []
-    except (json.JSONDecodeError, ValueError):
-        return []
-    return [s for s in suggestions[:3] if isinstance(s, str) and s.strip()]
+        result = await _openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": _SUGGEST_PROMPT.format(
+                response_text=response_text[:500],
+            )}],
+            max_tokens=100,
+            temperature=0.7,
+        )
+        raw = result.choices[0].message.content or ""
+        suggestions = json.loads(raw.strip())
+        if isinstance(suggestions, list):
+            return [s for s in suggestions[:3] if isinstance(s, str) and s.strip()]
+    except Exception:
+        pass
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -417,33 +419,22 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
                 yield event
 
             # Bonus 3: Smart Suggestions — after streaming finishes, read the
-            # last assistant message from the store, parse suggestion markers,
-            # strip the raw marker from the stored text, and emit a
-            # ClientEffectEvent so the frontend renders clean chips.
+            # last assistant message, generate suggestions via a separate fast
+            # API call, and emit a ClientEffectEvent for the frontend chips.
             try:
                 final_items = await self.store.load_thread_items(
                     thread.id, after=None, limit=5, order="desc", context=context,
                 )
                 for item in final_items.data:
                     if isinstance(item, AssistantMessageItem) and item.content:
-                        dirty = False
                         for part in item.content:
                             if hasattr(part, "text") and part.text:
-                                suggestions = _parse_suggestions(part.text)
+                                suggestions = await _generate_suggestions(part.text)
                                 if suggestions:
                                     yield ClientEffectEvent(
                                         name="suggestions",
                                         data={"suggestions": suggestions},
                                     )
-                                    # Strip the raw marker from stored text
-                                    cleaned = _SUGGESTIONS_RE.sub("", part.text).rstrip()
-                                    if cleaned != part.text:
-                                        part.text = cleaned
-                                        dirty = True
-                        if dirty:
-                            await self.store.save_item(
-                                thread.id, item, context,
-                            )
                         break
             except Exception:
                 pass  # suggestions are non-critical
