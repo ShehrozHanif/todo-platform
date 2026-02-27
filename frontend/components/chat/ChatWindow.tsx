@@ -46,7 +46,8 @@ function useVoiceInput() {
       recognitionRef.current = new SR();
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = 'en-US';
+      // No hardcoded lang — auto-detect from speech.
+      // Browser will use system locale or detect automatically.
 
       recognitionRef.current.onresult = (event: any) => {
         setTranscript(event.results[0][0].transcript);
