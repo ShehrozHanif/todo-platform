@@ -206,6 +206,151 @@ def _parse_suggestions(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Devanagari → Urdu script transliteration (handles mixed English+Urdu text)
+# ---------------------------------------------------------------------------
+# Nukta combinations (must be checked before single consonants)
+_DEVA_NUKTA: dict[str, str] = {
+    "\u0915\u093C": "\u0642",   # क़ → ق
+    "\u0916\u093C": "\u062E",   # ख़ → خ
+    "\u0917\u093C": "\u063A",   # ग़ → غ
+    "\u091C\u093C": "\u0632",   # ज़ → ز
+    "\u0921\u093C": "\u0691",   # ड़ → ڑ
+    "\u0922\u093C": "\u0691\u06BE",  # ढ़ → ڑھ
+    "\u092B\u093C": "\u0641",   # फ़ → ف
+}
+
+# Consonants
+_DEVA_CONSONANTS: dict[str, str] = {
+    "\u0915": "\u06A9",   # क → ک
+    "\u0916": "\u06A9\u06BE",  # ख → کھ
+    "\u0917": "\u06AF",   # ग → گ
+    "\u0918": "\u06AF\u06BE",  # घ → گھ
+    "\u0919": "\u0646\u06AF",  # ङ → نگ
+    "\u091A": "\u0686",   # च → چ
+    "\u091B": "\u0686\u06BE",  # छ → چھ
+    "\u091C": "\u062C",   # ज → ج
+    "\u091D": "\u062C\u06BE",  # झ → جھ
+    "\u091E": "\u0646",   # ञ → ن
+    "\u091F": "\u0679",   # ट → ٹ
+    "\u0920": "\u0679\u06BE",  # ठ → ٹھ
+    "\u0921": "\u0688",   # ड → ڈ
+    "\u0922": "\u0688\u06BE",  # ढ → ڈھ
+    "\u0923": "\u0646",   # ण → ن
+    "\u0924": "\u062A",   # त → ت
+    "\u0925": "\u062A\u06BE",  # थ → تھ
+    "\u0926": "\u062F",   # द → د
+    "\u0927": "\u062F\u06BE",  # ध → دھ
+    "\u0928": "\u0646",   # न → ن
+    "\u092A": "\u067E",   # प → پ
+    "\u092B": "\u0641",   # फ → ف
+    "\u092C": "\u0628",   # ब → ب
+    "\u092D": "\u0628\u06BE",  # भ → بھ
+    "\u092E": "\u0645",   # म → م
+    "\u092F": "\u06CC",   # य → ی
+    "\u0930": "\u0631",   # र → ر
+    "\u0932": "\u0644",   # ल → ل
+    "\u0935": "\u0648",   # व → و
+    "\u0936": "\u0634",   # श → ش
+    "\u0937": "\u0634",   # ष → ش
+    "\u0938": "\u0633",   # स → س
+    "\u0939": "\u06C1",   # ह → ہ
+}
+
+# Independent vowels (word-initial)
+_DEVA_VOWELS: dict[str, str] = {
+    "\u0905": "\u0627",         # अ → ا
+    "\u0906": "\u0622",         # आ → آ
+    "\u0907": "\u0627",         # इ → ا
+    "\u0908": "\u0627\u06CC",   # ई → ای
+    "\u0909": "\u0627",         # उ → ا
+    "\u090A": "\u0627\u0648",   # ऊ → او
+    "\u090F": "\u06D2",         # ए → ے
+    "\u0910": "\u0627\u06CC",   # ऐ → ای
+    "\u0913": "\u0627\u0648",   # ओ → او
+    "\u0914": "\u0627\u0648",   # औ → او
+    "\u0911": "\u0622",         # ऑ → آ
+}
+
+# Vowel matras (after consonants)
+_DEVA_MATRAS: dict[str, str] = {
+    "\u093E": "\u0627",   # ा → ا (aa)
+    "\u093F": "",          # ि → (short i, often omitted)
+    "\u0940": "\u06CC",   # ी → ی (ee)
+    "\u0941": "",          # ु → (short u, often omitted)
+    "\u0942": "\u0648",   # ू → و (oo)
+    "\u0947": "\u06D2",   # े → ے (e)
+    "\u0948": "\u06CC",   # ै → ی (ai)
+    "\u094B": "\u0648",   # ो → و (o)
+    "\u094C": "\u0648",   # ौ → و (au)
+    "\u0949": "\u0627",   # ॉ → ا
+}
+
+# Other marks
+_DEVA_MARKS: dict[str, str] = {
+    "\u094D": "",          # ् virama — suppresses inherent vowel
+    "\u0902": "\u06BA",   # ं anusvara → ں
+    "\u0901": "\u06BA",   # ँ chandrabindu → ں
+    "\u0903": "",          # ः visarga
+    "\u093C": "",          # ़ nukta (handled above in pairs)
+}
+
+
+def _devanagari_to_urdu(text: str) -> str:
+    """Convert Devanagari script to Urdu in-place, keeping Latin text as-is."""
+    result: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+
+        # Check two-char nukta combinations first
+        if i + 1 < n:
+            pair = text[i : i + 2]
+            if pair in _DEVA_NUKTA:
+                result.append(_DEVA_NUKTA[pair])
+                i += 2
+                continue
+
+        # Independent vowels
+        if ch in _DEVA_VOWELS:
+            result.append(_DEVA_VOWELS[ch])
+            i += 1
+            continue
+
+        # Consonants
+        if ch in _DEVA_CONSONANTS:
+            result.append(_DEVA_CONSONANTS[ch])
+            i += 1
+            # Check for following virama or matra
+            if i < n and text[i] == "\u094D":
+                # Virama: suppress inherent vowel, skip it
+                i += 1
+            elif i < n and text[i] in _DEVA_MATRAS:
+                result.append(_DEVA_MATRAS[text[i]])
+                i += 1
+            # else: inherent 'a' — no extra character needed in Urdu
+            continue
+
+        # Matras (standalone, shouldn't happen but be safe)
+        if ch in _DEVA_MATRAS:
+            result.append(_DEVA_MATRAS[ch])
+            i += 1
+            continue
+
+        # Other Devanagari marks
+        if ch in _DEVA_MARKS:
+            result.append(_DEVA_MARKS[ch])
+            i += 1
+            continue
+
+        # Everything else (Latin, spaces, punctuation) — pass through
+        result.append(ch)
+        i += 1
+
+    return "".join(result)
+
+
+# ---------------------------------------------------------------------------
 # ChatKit server with Agents SDK integration + bonus features
 # ---------------------------------------------------------------------------
 class TaskFlowChatKitServer(ChatKitServer[dict]):
@@ -216,31 +361,22 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
     ) -> TranscriptionResult:
         """Transcribe voice audio using OpenAI Whisper API.
 
-        Two-pass strategy for Urdu/Hindi disambiguation:
-        1. First pass: auto-detect language (no hint).
-        2. If the result contains Devanagari script (Hindi), re-transcribe
-           with language='ur' to get Urdu (Nastaliq/Arabic) script instead.
-        English and other languages pass through unchanged.
+        Whisper auto-detects language.  If the result contains Devanagari
+        (Hindi script), we transliterate those characters to Urdu script
+        in-place — English words stay as English.
         """
         ext_map = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a"}
         ext = ext_map.get(audio_input.media_type, "webm")
-        file_tuple = (f"audio.{ext}", audio_input.data, audio_input.mime_type)
 
-        # Pass 1: auto-detect
         transcript = await _openai_client.audio.transcriptions.create(
             model="whisper-1",
-            file=file_tuple,
+            file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
         )
         text = transcript.text
 
-        # If Devanagari characters detected (Hindi), re-transcribe as Urdu
+        # Transliterate any Devanagari (Hindi) portions to Urdu script
         if any("\u0900" <= ch <= "\u097F" for ch in text):
-            transcript = await _openai_client.audio.transcriptions.create(
-                model="whisper-1",
-                file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
-                language="ur",
-            )
-            text = transcript.text
+            text = _devanagari_to_urdu(text)
 
         return TranscriptionResult(text=text)
 
