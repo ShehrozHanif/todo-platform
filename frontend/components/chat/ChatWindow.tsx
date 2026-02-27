@@ -278,19 +278,19 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   }
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="flex flex-col h-full">
       {/* ChatKit fills the space */}
       <div ref={containerRef} className="flex-1" style={{ minHeight: 0 }} />
 
-      {/* Bonus 3: Smart suggestion chips — rendered above the composer */}
+      {/* Bonus 3: Smart suggestion chips — clean inline bar below chat */}
       {suggestions.length > 0 && (
-        <div className="absolute bottom-16 left-0 right-0 flex justify-center px-4 z-10">
+        <div className="flex justify-center px-4 py-2.5 border-t border-gray-100 bg-gray-50/80 backdrop-blur-sm">
           <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
             {suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => handleSuggestionClick(s)}
-                className="px-3 py-1.5 rounded-full text-[12px] font-medium border border-indigo-300 text-indigo-600 bg-white hover:bg-indigo-50 hover:border-indigo-500 shadow-sm transition-colors"
+                className="px-3.5 py-1.5 rounded-lg text-[13px] font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 hover:border-indigo-400 shadow-sm transition-all duration-150 active:scale-95"
               >
                 {s}
               </button>
