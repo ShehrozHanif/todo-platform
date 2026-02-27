@@ -418,13 +418,15 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
 
             # Bonus 3: Smart Suggestions — after streaming finishes, read the
             # last assistant message from the store, parse suggestion markers,
-            # and emit a ClientEffectEvent so the frontend can render chips.
+            # strip the raw marker from the stored text, and emit a
+            # ClientEffectEvent so the frontend renders clean chips.
             try:
                 final_items = await self.store.load_thread_items(
                     thread.id, after=None, limit=5, order="desc", context=context,
                 )
                 for item in final_items.data:
                     if isinstance(item, AssistantMessageItem) and item.content:
+                        dirty = False
                         for part in item.content:
                             if hasattr(part, "text") and part.text:
                                 suggestions = _parse_suggestions(part.text)
@@ -433,6 +435,15 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
                                         name="suggestions",
                                         data={"suggestions": suggestions},
                                     )
+                                    # Strip the raw marker from stored text
+                                    cleaned = _SUGGESTIONS_RE.sub("", part.text).rstrip()
+                                    if cleaned != part.text:
+                                        part.text = cleaned
+                                        dirty = True
+                        if dirty:
+                            await self.store.save_item(
+                                thread.id, item, context,
+                            )
                         break
             except Exception:
                 pass  # suggestions are non-critical
