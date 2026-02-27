@@ -534,9 +534,9 @@ Main Claude
 ## Bonus Deliverables Checklist
 
 - [x] **Bonus 1 — Voice Input:** Mic button in chat, browser speech-to-text
-- [ ] **Bonus 2 — Conversation Memory:** History persistence, context resolution, "New Chat" button
-- [ ] **Bonus 3 — Smart Suggestions:** AI-generated suggestion chips after each response
-- [ ] **Bonus 4 — Multi-language:** Explicit language support, RTL rendering, language matching
+- [x] **Bonus 2 — Conversation Memory:** History persistence, context resolution, "New Chat" button
+- [x] **Bonus 3 — Smart Suggestions:** AI-generated suggestion chips after each response
+- [x] **Bonus 4 — Multi-language:** Explicit language support, RTL rendering, language matching
 
 ---
 
