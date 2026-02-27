@@ -114,7 +114,6 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const mountedRef = useRef(false);
   const chatkitElRef = useRef<any>(null);
   const threadIdRef = useRef<string | null>(null);
-  const pendingTaskIdRef = useRef<number | null>(null);
   const { refreshTasks, state, dispatch } = useTaskContext();
   const voice = useVoiceInput();
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -199,31 +198,8 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         threadIdRef.current = evt?.detail?.threadId || null;
       });
 
-      // Step 2 (Path A): Receive task_extras from backend, save to localStorage
-      el.addEventListener('chatkit.effect', (evt: any) => {
-        const detail = evt?.detail;
-        if (detail?.name === 'task_extras' && detail?.data?.task_id != null) {
-          const { task_id, priority, category, dueDate, dueTime } = detail.data;
-          // Save extracted fields to localStorage immediately
-          saveTaskExtras(String(task_id), {
-            ...(priority && { priority }),
-            ...(category && { category }),
-            ...(dueDate && { dueDate }),
-            ...(dueTime && { dueTime }),
-          });
-          // Remember this task ID so we can show "Set details" chip
-          pendingTaskIdRef.current = task_id;
-        }
-      });
-
       el.addEventListener('chatkit.response.end', async () => {
         refreshTasks();
-        // Show "Set details" chip if a task was just created
-        if (pendingTaskIdRef.current !== null) {
-          setSetDetailsTaskId(pendingTaskIdRef.current);
-          pendingTaskIdRef.current = null;
-        }
-        // Fetch smart suggestions
         try {
           const threadId = threadIdRef.current;
           if (threadId && token) {
@@ -232,13 +208,25 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
             });
             if (res.ok) {
               const data = await res.json();
+              // Smart suggestions
               if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
                 setSuggestions(data.suggestions);
+              }
+              // Path A: task extras — save to localStorage then show "Set details" chip
+              if (data.task_extras?.task_id != null) {
+                const { task_id, priority, category, dueDate, dueTime } = data.task_extras;
+                saveTaskExtras(String(task_id), {
+                  ...(priority && { priority }),
+                  ...(category && { category }),
+                  ...(dueDate && { dueDate }),
+                  ...(dueTime && { dueTime }),
+                });
+                setSetDetailsTaskId(task_id);
               }
             }
           }
         } catch {
-          // suggestions are non-critical
+          // non-critical
         }
       });
 

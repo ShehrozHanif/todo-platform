@@ -8,7 +8,7 @@ import jwt
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import Response, StreamingResponse
 
-from chatkit_server import chatkit_server, store, _generate_suggestions
+from chatkit_server import chatkit_server, store, _generate_suggestions, _pending_task_extras
 from chatkit.types import AssistantMessageItem
 
 BETTER_AUTH_SECRET: str = os.environ.get("BETTER_AUTH_SECRET", "")
@@ -59,8 +59,13 @@ async def chatkit_endpoint(request: Request) -> Response:
 
 @router.get("/chatkit/suggestions/{thread_id}")
 async def get_suggestions(thread_id: str, request: Request) -> dict:
-    """Return smart suggestion chips based on the last assistant message."""
+    """Return smart suggestion chips and task extras for a thread."""
     user_id = _extract_user_id(request)
+
+    # Pop task_extras for this thread (consume once so it doesn't persist)
+    task_extras = _pending_task_extras.pop(thread_id, None)
+
+    suggestions: list[str] = []
     try:
         items_page = await store.load_thread_items(
             thread_id, after=None, limit=5, order="desc",
@@ -71,7 +76,12 @@ async def get_suggestions(thread_id: str, request: Request) -> dict:
                 for part in item.content:
                     if hasattr(part, "text") and part.text:
                         suggestions = await _generate_suggestions(part.text)
-                        return {"suggestions": suggestions}
+                        break
+                break
     except Exception:
         pass
-    return {"suggestions": []}
+
+    response: dict = {"suggestions": suggestions}
+    if task_extras:
+        response["task_extras"] = task_extras
+    return response

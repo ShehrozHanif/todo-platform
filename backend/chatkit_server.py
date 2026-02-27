@@ -495,7 +495,7 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
             async for event in stream_agent_response(agent_context, result):
                 yield event
 
-            # Step 1 (Path A): Detect add_task tool call result, extract extras, emit event
+            # Path A Step 1: detect add_task result, extract extras, store for polling
             try:
                 new_task_id: int | None = None
                 for item in result.new_items:
@@ -505,18 +505,15 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
                         and hasattr(item.raw_item, "name")
                         and item.raw_item.name == "add_task"
                     ):
-                        # Parse task ID from tool output
                         output_text = ""
                         if hasattr(item, "output"):
                             output_text = str(item.output)
                         elif hasattr(item, "raw_item") and hasattr(item.raw_item, "output"):
                             output_text = str(item.raw_item.output)
-                        # Try to find "id" in JSON output
                         try:
                             task_data = json.loads(output_text)
                             new_task_id = task_data.get("id")
                         except Exception:
-                            # Try regex fallback
                             m = re.search(r'"id"\s*:\s*(\d+)', output_text)
                             if m:
                                 new_task_id = int(m.group(1))
@@ -524,16 +521,21 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
 
                 if new_task_id is not None and user_text:
                     extras = await _extract_task_extras(user_text)
-                    yield ClientEffectEvent(
-                        name="task_extras",
-                        data={"task_id": new_task_id, **extras},
-                    )
+                    # Store in module-level dict keyed by thread_id so the
+                    # GET /chatkit/suggestions endpoint can return it reliably
+                    _pending_task_extras[thread.id] = {
+                        "task_id": new_task_id,
+                        **extras,
+                    }
             except Exception:
-                pass  # task_extras is non-critical
+                pass  # non-critical
 
-            # Suggestions are fetched by the frontend via GET /chatkit/suggestions/{thread_id}
+            # Suggestions + task_extras fetched via GET /chatkit/suggestions/{thread_id}
 
 
 # Singleton instances
 store = InMemoryStore()
 chatkit_server = TaskFlowChatKitServer(store=store)
+
+# Stores extracted task extras keyed by thread_id until frontend polls for them
+_pending_task_extras: dict[str, dict] = {}
