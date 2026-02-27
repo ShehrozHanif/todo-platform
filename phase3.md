@@ -646,45 +646,53 @@ Clicking it opens the **EditTaskModal** pre-filled for that task, where the user
 ### Execution Steps (strict order)
 
 ```
-Step 1: Update chatkit_server.py system prompt
-        → Instruct AI to extract priority/category/dueDate/dueTime from natural language
-        → After add_task, emit ClientEffectEvent("task_extras", {task_id, priority, category, dueDate, dueTime})
+Step 1: ✅ Update chatkit_server.py
+        → System prompt instructs AI to extract priority/category/dueDate/dueTime
+        → _extract_task_extras() calls gpt-4o-mini to parse fields from user message
+        → After add_task ToolCallOutputItem detected (by output shape: id+title),
+          extras stored in _pending_task_extras[thread_id] for polling
 
-Step 2: Update ChatWindow.tsx
-        → Listen for chatkit.effect "task_extras" event
-        → Call saveTaskExtras(task_id, extracted_fields) to persist to localStorage
-        → Show "Set details →" chip using task_id
+Step 2: ✅ Update ChatWindow.tsx
+        → chatkit.response.end fetches GET /chatkit/suggestions/{threadId}
+        → Receives task_extras from backend, calls saveTaskExtras() BEFORE refreshTasks()
+        → Shows green "✏️ Set due date & priority" chip via setDetailsTaskId state
 
-Step 3: Wire "Set details" chip to EditTaskModal
-        → On click, find task by ID from context state
-        → Dispatch OPEN_MODAL with that task
+Step 3: ✅ Wire "Set details" chip to EditTaskModal
+        → handleSetDetailsClick finds task by ID in state.tasks (with retry)
+        → Dispatches OPEN_MODAL with merged task (extras from localStorage)
 
-Step 4: Test end-to-end
-        → Speak "Add a high priority work task: review pull request"
-        → Verify task appears in dashboard with correct priority/category
-        → Verify "Set details" chip opens EditTaskModal
+Step 4: ✅ Test end-to-end — verified by user
+        → "Add a high priority health task to take medicine at 9am" → High/Health/09:00
+        → Chip appears and opens EditTaskModal with correct pre-filled values
 
-Step 5: User approves → commit + deploy
+Step 5: ✅ Approved + deployed (2026-02-28)
 ```
 
 ### Acceptance Criteria
 
-- [ ] AI extracts `priority` when user says "high/medium/low priority" or "urgent"
-- [ ] AI extracts `category` when user mentions "work", "personal", "health", "study"
-- [ ] AI extracts `dueDate` from "tomorrow", "next Monday", specific dates
-- [ ] AI extracts `dueTime` from "at 3pm", "at 9am"
-- [ ] Extracted fields saved to localStorage via `saveTaskExtras()`
-- [ ] Task appears in dashboard with correct priority/category/due date
-- [ ] "Set details →" chip appears after every task creation
-- [ ] Clicking chip opens EditTaskModal for that task
-- [ ] If no fields extracted, chip still appears so user can fill manually
-- [ ] Graceful fallback: if event fails, task still created with title only
+- [x] AI extracts `priority` when user says "high/medium/low priority" or "urgent"
+- [x] AI extracts `category` when user mentions "work", "personal", "health", "study"
+- [x] AI extracts `dueDate` from "tomorrow", "next Monday", specific dates
+- [x] AI extracts `dueTime` from "at 3pm", "at 9am"
+- [x] Extracted fields saved to localStorage via `saveTaskExtras()`
+- [x] Task appears in dashboard with correct priority/category/due date
+- [x] "Set details →" chip appears after every task creation
+- [x] Clicking chip opens EditTaskModal for that task
+- [x] If no fields extracted, chip still appears so user can fill manually
+- [x] Graceful fallback: if event fails, task still created with title only
 
 ---
 
-## Next Step
+## Status
 
-Start **Voice Task Enrichment (Path A)** — update chatkit_server.py system prompt and wire ClientEffectEvent for task_extras.
+**Voice Task Enrichment (Path A) — COMPLETE** (2026-02-28)
+
+Key commits:
+- `46b725c` feat(path-a-step1): extract task extras from voice
+- `2732be8` feat(path-a-step2): save task extras and show Set Details chip
+- `b3ff760` fix: store task extras server-side, return via suggestions endpoint
+- `2877b70` fix: save task extras before refreshTasks to fix timing race
+- `b6d34c8` fix: detect add_task by output shape, not ToolCallOutputItem.raw_item.name
 
 
 
