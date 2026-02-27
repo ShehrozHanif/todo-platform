@@ -216,11 +216,8 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
     ) -> TranscriptionResult:
         """Transcribe voice audio using OpenAI Whisper API.
 
-        Urdu and Hindi are phonetically identical — Whisper can't tell them
-        apart by sound.  We pass language='ur' so Whisper outputs اردو
-        (Nastaliq/Arabic) script instead of Hindi Devanagari.  Whisper still
-        transcribes English words correctly with this setting — it only
-        changes the script choice for Hindustani speech.
+        No language hint — Whisper auto-detects the spoken language so
+        English speech → English text, Urdu speech → Urdu text, etc.
         """
         ext_map = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a"}
         ext = ext_map.get(audio_input.media_type, "webm")
@@ -228,7 +225,6 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
         transcript = await _openai_client.audio.transcriptions.create(
             model="whisper-1",
             file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
-            language="ur",
         )
         return TranscriptionResult(text=transcript.text)
 
