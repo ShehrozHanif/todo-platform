@@ -496,28 +496,27 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
                 yield event
 
             # Path A Step 1: detect add_task result, extract extras, store for polling
+            # NOTE: ToolCallOutputItem.raw_item does NOT have a 'name' attr —
+            # the tool name is on ToolCallItem. Instead, detect any tool output
+            # whose JSON contains both 'id' and 'title' (signature of add_task).
             try:
                 new_task_id: int | None = None
                 for item in result.new_items:
-                    if (
-                        isinstance(item, ToolCallOutputItem)
-                        and hasattr(item, "raw_item")
-                        and hasattr(item.raw_item, "name")
-                        and item.raw_item.name == "add_task"
-                    ):
-                        output_text = ""
-                        if hasattr(item, "output"):
-                            output_text = str(item.output)
-                        elif hasattr(item, "raw_item") and hasattr(item.raw_item, "output"):
-                            output_text = str(item.raw_item.output)
-                        try:
-                            task_data = json.loads(output_text)
-                            new_task_id = task_data.get("id")
-                        except Exception:
-                            m = re.search(r'"id"\s*:\s*(\d+)', output_text)
-                            if m:
-                                new_task_id = int(m.group(1))
-                        break
+                    if not isinstance(item, ToolCallOutputItem):
+                        continue
+                    output_text = str(getattr(item, "output", ""))
+                    if not output_text:
+                        continue
+                    try:
+                        task_data = json.loads(output_text)
+                        if isinstance(task_data, dict) and "id" in task_data and "title" in task_data:
+                            new_task_id = task_data["id"]
+                            break
+                    except Exception:
+                        m = re.search(r'"id"\s*:\s*(\d+)', output_text)
+                        if m:
+                            new_task_id = int(m.group(1))
+                            break
 
                 if new_task_id is not None and user_text:
                     extras = await _extract_task_extras(user_text)
