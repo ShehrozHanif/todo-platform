@@ -199,7 +199,6 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
       });
 
       el.addEventListener('chatkit.response.end', async () => {
-        refreshTasks();
         try {
           const threadId = threadIdRef.current;
           if (threadId && token) {
@@ -208,11 +207,8 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
             });
             if (res.ok) {
               const data = await res.json();
-              // Smart suggestions
-              if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-                setSuggestions(data.suggestions);
-              }
-              // Path A: task extras — save to localStorage then show "Set details" chip
+              // Path A: save task extras to localStorage BEFORE refreshing tasks
+              // so mapTask() picks them up when tasks are re-fetched
               if (data.task_extras?.task_id != null) {
                 const { task_id, priority, category, dueDate, dueTime } = data.task_extras;
                 saveTaskExtras(String(task_id), {
@@ -223,10 +219,16 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
                 });
                 setSetDetailsTaskId(task_id);
               }
+              // Now refresh — mapTask() will merge the just-saved localStorage extras
+              refreshTasks();
+              // Smart suggestions
+              if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+                setSuggestions(data.suggestions);
+              }
             }
           }
         } catch {
-          // non-critical
+          refreshTasks(); // always refresh even if suggestions fetch fails
         }
       });
 
@@ -304,11 +306,16 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
 
   function handleSetDetailsClick(taskId: number) {
     setSetDetailsTaskId(null);
-    // Find the task in state (after refreshTasks has loaded it)
-    const task = state.tasks.find(t => t.id === String(taskId));
-    if (task) {
-      dispatch({ type: 'OPEN_MODAL', payload: task });
-    }
+    // Tasks may still be loading — retry briefly until found
+    const attempt = (tries: number) => {
+      const task = state.tasks.find(t => t.id === String(taskId));
+      if (task) {
+        dispatch({ type: 'OPEN_MODAL', payload: task });
+      } else if (tries > 0) {
+        setTimeout(() => attempt(tries - 1), 300);
+      }
+    };
+    attempt(5); // up to 5 × 300ms = 1.5s
   }
 
   const hasChips = suggestions.length > 0 || setDetailsTaskId !== null;
