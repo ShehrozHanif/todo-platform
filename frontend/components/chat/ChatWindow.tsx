@@ -115,6 +115,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const { refreshTasks } = useTaskContext();
   const { data: session } = useSession();
   const voice = useVoiceInput();
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Inject voice transcript into ChatKit's input field
   useEffect(() => {
@@ -194,6 +195,19 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         refreshTasks();
       });
 
+      // Bonus 3: Smart Suggestions — server sends ClientEffectEvent with suggestions
+      el.addEventListener('chatkit.effect', (evt: any) => {
+        const detail = evt?.detail;
+        if (detail?.name === 'suggestions' && Array.isArray(detail?.data?.suggestions)) {
+          setSuggestions(detail.data.suggestions);
+        }
+      });
+
+      // Clear suggestions when user starts a new message
+      el.addEventListener('chatkit.response.start', () => {
+        setSuggestions([]);
+      });
+
       if (typeof el.setOptions === 'function') {
         try {
           el.setOptions({
@@ -254,26 +268,35 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
     return () => { cancelled = true; };
   }, [onFail, refreshTasks]);
 
+  function handleSuggestionClick(text: string) {
+    const el = chatkitElRef.current;
+    if (el && typeof el.sendUserMessage === 'function') {
+      setSuggestions([]);
+      el.sendUserMessage({ text });
+    }
+  }
+
   return (
     <div className="flex flex-col h-full relative">
       {/* ChatKit fills the space */}
       <div ref={containerRef} className="flex-1" style={{ minHeight: 0 }} />
 
-      {/* Floating bonus toolbar — voice input + info */}
-      <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2 z-10">
-        {voice.speechSupported && (
-          <MicButton
-            isListening={voice.isListening}
-            disabled={!session?.user?.id}
-            onClick={voice.toggle}
-          />
-        )}
-        {voice.isListening && (
-          <div className="px-3 py-1.5 rounded-lg bg-red-500/90 text-white text-[11px] font-medium animate-pulse">
-            Listening...
+      {/* Bonus 3: Smart suggestion chips — rendered above the composer */}
+      {suggestions.length > 0 && (
+        <div className="absolute bottom-16 left-0 right-0 flex justify-center px-4 z-10">
+          <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+            {suggestions.map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSuggestionClick(s)}
+                className="px-3 py-1.5 rounded-full text-[12px] font-medium border border-indigo-300 text-indigo-600 bg-white hover:bg-indigo-50 hover:border-indigo-500 shadow-sm transition-colors"
+              >
+                {s}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

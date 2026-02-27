@@ -1,9 +1,11 @@
 # [Task]: T005 [From]: specs/phase3-chatbot/chat-ui/spec.md §ChatKit Backend
 # ChatKit Python SDK server — bridges OpenAI ChatKit frontend to our
 # Agents SDK + MCP tool pipeline.
-# Bonus features: voice transcription (Whisper), thread history, multi-language.
+# Bonus features: voice transcription (Whisper), thread history, smart suggestions, multi-language.
 
+import json
 import os
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import AsyncIterator
@@ -24,6 +26,7 @@ from chatkit.types import (
     AssistantMessageContent,
     AssistantMessageItem,
     Attachment,
+    ClientEffectEvent,
     Page,
     ThreadItem,
     ThreadMetadata,
@@ -143,8 +146,9 @@ class InMemoryStore(Store[dict]):
 
 
 # ---------------------------------------------------------------------------
-# System prompt — context awareness + multi-language (NO suggestion markers
-# since ChatKit streams text character-by-character and can't strip markers)
+# System prompt — context awareness + multi-language + smart suggestions
+# The <!--suggestions:--> markers stream as text but get parsed from the
+# final ThreadItemDoneEvent and sent as a ClientEffectEvent to the frontend.
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """You are TaskFlow Assistant, an AI that helps users manage their to-do tasks.
 You have access to tools that can add, list, complete, delete, and update tasks.
@@ -171,8 +175,34 @@ Context awareness:
 Language:
 - Always respond in the SAME language the user writes in.
 - If the user writes in Urdu, respond in Urdu. If Spanish, respond in Spanish. If Arabic, respond in Arabic.
+- Generate suggestion chips in the user's language too.
 - If the user switches languages mid-conversation, match their latest message language.
+
+Smart suggestions:
+- After EVERY response, append exactly this format on its own line at the very end:
+  <!--suggestions:["suggestion 1","suggestion 2","suggestion 3"]-->
+- Generate 2-3 short, contextual follow-up suggestions based on what just happened.
+- Suggestions should be natural language commands the user might want to do next.
+- Examples after adding a task: <!--suggestions:["List all tasks","Add another task","Complete a task"]-->
+- Examples after listing tasks: <!--suggestions:["Complete task 1","Add a new task","Delete a task"]-->
+- ALWAYS include the suggestions line. Never skip it.
 """
+
+_SUGGESTIONS_RE = re.compile(r"<!--suggestions:(\[.*?\])-->", re.DOTALL)
+
+
+def _parse_suggestions(text: str) -> list[str]:
+    """Extract suggestion chips from AI response text."""
+    match = _SUGGESTIONS_RE.search(text)
+    if not match:
+        return []
+    try:
+        suggestions = json.loads(match.group(1))
+        if not isinstance(suggestions, list):
+            return []
+    except (json.JSONDecodeError, ValueError):
+        return []
+    return [s for s in suggestions[:3] if isinstance(s, str) and s.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +259,27 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
             result = Runner.run_streamed(agent, input_items, context=agent_context)
             async for event in stream_agent_response(agent_context, result):
                 yield event
+
+            # Bonus 3: Smart Suggestions — after streaming finishes, read the
+            # last assistant message from the store, parse suggestion markers,
+            # and emit a ClientEffectEvent so the frontend can render chips.
+            try:
+                final_items = await self.store.load_thread_items(
+                    thread.id, after=None, limit=5, order="desc", context=context,
+                )
+                for item in final_items.data:
+                    if isinstance(item, AssistantMessageItem) and item.content:
+                        for part in item.content:
+                            if hasattr(part, "text") and part.text:
+                                suggestions = _parse_suggestions(part.text)
+                                if suggestions:
+                                    yield ClientEffectEvent(
+                                        name="suggestions",
+                                        data={"suggestions": suggestions},
+                                    )
+                        break
+            except Exception:
+                pass  # suggestions are non-critical
 
 
 # Singleton instances
