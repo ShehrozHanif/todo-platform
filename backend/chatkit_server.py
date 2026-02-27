@@ -417,27 +417,7 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
             result = Runner.run_streamed(agent, input_items, context=agent_context)
             async for event in stream_agent_response(agent_context, result):
                 yield event
-
-            # Bonus 3: Smart Suggestions — after streaming finishes, read the
-            # last assistant message, generate suggestions via a separate fast
-            # API call, and emit a ClientEffectEvent for the frontend chips.
-            try:
-                final_items = await self.store.load_thread_items(
-                    thread.id, after=None, limit=5, order="desc", context=context,
-                )
-                for item in final_items.data:
-                    if isinstance(item, AssistantMessageItem) and item.content:
-                        for part in item.content:
-                            if hasattr(part, "text") and part.text:
-                                suggestions = await _generate_suggestions(part.text)
-                                if suggestions:
-                                    yield ClientEffectEvent(
-                                        name="suggestions",
-                                        data={"suggestions": suggestions},
-                                    )
-                        break
-            except Exception:
-                pass  # suggestions are non-critical
+            # Suggestions are fetched by the frontend via GET /chatkit/suggestions/{thread_id}
 
 
 # Singleton instances

@@ -113,6 +113,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
   const chatkitElRef = useRef<any>(null);
+  const threadIdRef = useRef<string | null>(null);
   const { refreshTasks } = useTaskContext();
   const { data: session } = useSession();
   const voice = useVoiceInput();
@@ -192,15 +193,29 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         initialized = true;
       });
 
-      el.addEventListener('chatkit.response.end', () => {
-        refreshTasks();
+      // Track current thread ID
+      el.addEventListener('chatkit.thread.change', (evt: any) => {
+        threadIdRef.current = evt?.detail?.threadId || null;
       });
 
-      // Bonus 3: Smart Suggestions — server sends ClientEffectEvent with suggestions
-      el.addEventListener('chatkit.effect', (evt: any) => {
-        const detail = evt?.detail;
-        if (detail?.name === 'suggestions' && Array.isArray(detail?.data?.suggestions)) {
-          setSuggestions(detail.data.suggestions);
+      el.addEventListener('chatkit.response.end', async () => {
+        refreshTasks();
+        // Bonus 3: Fetch smart suggestions after response completes
+        try {
+          const threadId = threadIdRef.current;
+          if (threadId && token) {
+            const res = await fetch(`${API_URL}/chatkit/suggestions/${threadId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+                setSuggestions(data.suggestions);
+              }
+            }
+          }
+        } catch {
+          // suggestions are non-critical
         }
       });
 
