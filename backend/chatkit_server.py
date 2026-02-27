@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import AsyncIterator
 
 import openai
-from agents import Agent, Runner
+from agents import Agent, Runner, RunItemStreamEvent
+from agents.items import ToolCallOutputItem
 from agents.mcp import MCPServerSse
 from chatkit.agents import stream_agent_response, simple_to_agent_input, AgentContext
 from chatkit.server import (
@@ -174,7 +175,75 @@ Language:
 - Always respond in the SAME language the user writes in.
 - If the user writes in Urdu, respond in Urdu. If Spanish, respond in Spanish. If Arabic, respond in Arabic.
 - If the user switches languages mid-conversation, match their latest message language.
+
+Task details extraction (for add_task only):
+- When adding a task, silently extract any of these details from the user's message if mentioned:
+  * priority: "urgent"/"high priority" → high | "normal"/"medium" → medium | "low priority"/"not urgent" → low
+  * category: "work task"/"for work"/"office" → work | "personal"/"home" → personal | "health"/"doctor"/"gym"/"medicine" → health | "study"/"learn"/"course"/"school" → study
+  * dueDate: "today" → today's date | "tomorrow" → tomorrow | "next Monday" → next Monday's date | specific dates → YYYY-MM-DD
+  * dueTime: "at 3pm" → 15:00 | "at 9am" → 09:00 | "at noon" → 12:00 | "at midnight" → 00:00
+- Only extract what is clearly mentioned — do NOT guess or invent details.
+- Do NOT mention these extracted details in your response text; just confirm the task was added.
 """
+
+# ---------------------------------------------------------------------------
+# Task extras extraction — parse priority/category/dueDate/dueTime from text
+# ---------------------------------------------------------------------------
+_EXTRACT_PROMPT = """Extract task details from this user message. Return ONLY a JSON object.
+
+Fields to extract (only include if clearly mentioned, do NOT guess):
+- priority: "high", "medium", or "low"
+- category: "work", "personal", "health", or "study"
+- dueDate: in YYYY-MM-DD format (today={today})
+- dueTime: in HH:MM format (24h)
+
+Examples:
+"Add a high priority work task to review the PR tomorrow" → {{"priority":"high","category":"work","dueDate":"{tomorrow}"}}
+"Remind me to call the doctor at 3pm" → {{"category":"health","dueTime":"15:00"}}
+"Buy groceries, low priority" → {{"priority":"low"}}
+"Team meeting" → {{}}
+
+User message: {message}
+
+Return only the JSON object, no explanation. If nothing matches return {{}}."""
+
+
+async def _extract_task_extras(user_message: str) -> dict:
+    """Extract priority/category/dueDate/dueTime from a natural language task message."""
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # compute tomorrow
+        from datetime import timedelta
+        tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+        result = await _openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": _EXTRACT_PROMPT.format(
+                message=user_message[:300],
+                today=today,
+                tomorrow=tomorrow,
+            )}],
+            max_tokens=80,
+            temperature=0,
+        )
+        raw = result.choices[0].message.content or "{}"
+        # strip markdown code fences if present
+        raw = re.sub(r"```.*?```", "", raw, flags=re.DOTALL).strip()
+        extras = json.loads(raw)
+        if isinstance(extras, dict):
+            # Validate/normalise values
+            allowed_priority = {"high", "medium", "low"}
+            allowed_category = {"work", "personal", "health", "study"}
+            return {
+                k: v for k, v in extras.items()
+                if k == "priority" and v in allowed_priority
+                or k == "category" and v in allowed_category
+                or k == "dueDate" and isinstance(v, str) and len(v) == 10
+                or k == "dueTime" and isinstance(v, str) and ":" in v
+            }
+    except Exception:
+        pass
+    return {}
+
 
 # ---------------------------------------------------------------------------
 # Smart suggestions — generated via a separate fast API call (never in chat)
@@ -414,9 +483,54 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
             agent_context = AgentContext(
                 thread=thread, store=self.store, request_context=context,
             )
+
+            # Capture the user's message text for extras extraction
+            user_text = ""
+            if input_user_message and input_user_message.content:
+                for part in input_user_message.content:
+                    if hasattr(part, "text") and part.text:
+                        user_text += part.text
+
             result = Runner.run_streamed(agent, input_items, context=agent_context)
             async for event in stream_agent_response(agent_context, result):
                 yield event
+
+            # Step 1 (Path A): Detect add_task tool call result, extract extras, emit event
+            try:
+                new_task_id: int | None = None
+                for item in result.new_items:
+                    if (
+                        isinstance(item, ToolCallOutputItem)
+                        and hasattr(item, "raw_item")
+                        and hasattr(item.raw_item, "name")
+                        and item.raw_item.name == "add_task"
+                    ):
+                        # Parse task ID from tool output
+                        output_text = ""
+                        if hasattr(item, "output"):
+                            output_text = str(item.output)
+                        elif hasattr(item, "raw_item") and hasattr(item.raw_item, "output"):
+                            output_text = str(item.raw_item.output)
+                        # Try to find "id" in JSON output
+                        try:
+                            task_data = json.loads(output_text)
+                            new_task_id = task_data.get("id")
+                        except Exception:
+                            # Try regex fallback
+                            m = re.search(r'"id"\s*:\s*(\d+)', output_text)
+                            if m:
+                                new_task_id = int(m.group(1))
+                        break
+
+                if new_task_id is not None and user_text:
+                    extras = await _extract_task_extras(user_text)
+                    yield ClientEffectEvent(
+                        name="task_extras",
+                        data={"task_id": new_task_id, **extras},
+                    )
+            except Exception:
+                pass  # task_extras is non-critical
+
             # Suggestions are fetched by the frontend via GET /chatkit/suggestions/{thread_id}
 
 
