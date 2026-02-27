@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { sendChatMessage, getChatHistory } from '@/lib/api';
+import { sendChatMessage, getChatHistory, saveTaskExtras } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -114,9 +114,11 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const mountedRef = useRef(false);
   const chatkitElRef = useRef<any>(null);
   const threadIdRef = useRef<string | null>(null);
-  const { refreshTasks } = useTaskContext();
+  const pendingTaskIdRef = useRef<number | null>(null);
+  const { refreshTasks, state, dispatch } = useTaskContext();
   const voice = useVoiceInput();
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [setDetailsTaskId, setSetDetailsTaskId] = useState<number | null>(null);
 
   // Inject voice transcript into ChatKit's input field
   useEffect(() => {
@@ -197,8 +199,31 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         threadIdRef.current = evt?.detail?.threadId || null;
       });
 
+      // Step 2 (Path A): Receive task_extras from backend, save to localStorage
+      el.addEventListener('chatkit.effect', (evt: any) => {
+        const detail = evt?.detail;
+        if (detail?.name === 'task_extras' && detail?.data?.task_id != null) {
+          const { task_id, priority, category, dueDate, dueTime } = detail.data;
+          // Save extracted fields to localStorage immediately
+          saveTaskExtras(String(task_id), {
+            ...(priority && { priority }),
+            ...(category && { category }),
+            ...(dueDate && { dueDate }),
+            ...(dueTime && { dueTime }),
+          });
+          // Remember this task ID so we can show "Set details" chip
+          pendingTaskIdRef.current = task_id;
+        }
+      });
+
       el.addEventListener('chatkit.response.end', async () => {
         refreshTasks();
+        // Show "Set details" chip if a task was just created
+        if (pendingTaskIdRef.current !== null) {
+          setSetDetailsTaskId(pendingTaskIdRef.current);
+          pendingTaskIdRef.current = null;
+        }
+        // Fetch smart suggestions
         try {
           const threadId = threadIdRef.current;
           if (threadId && token) {
@@ -219,6 +244,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
 
       el.addEventListener('chatkit.response.start', () => {
         setSuggestions([]);
+        setSetDetailsTaskId(null);
       });
 
       if (typeof el.setOptions === 'function') {
@@ -288,18 +314,39 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
     }
   }
 
+  function handleSetDetailsClick(taskId: number) {
+    setSetDetailsTaskId(null);
+    // Find the task in state (after refreshTasks has loaded it)
+    const task = state.tasks.find(t => t.id === String(taskId));
+    if (task) {
+      dispatch({ type: 'OPEN_MODAL', payload: task });
+    }
+  }
+
+  const hasChips = suggestions.length > 0 || setDetailsTaskId !== null;
+
   return (
     <div className="relative flex flex-col h-full">
       {/* ChatKit iframe fills full height */}
       <div ref={containerRef} className="flex-1" style={{ minHeight: 0 }} />
 
-      {/* Suggestions overlaid just above ChatKit's composer (~72px from bottom) */}
-      {suggestions.length > 0 && (
+      {/* Chips overlaid just above ChatKit's composer (~76px from bottom) */}
+      {hasChips && (
         <div
           className="absolute left-0 right-0 flex justify-center px-4 pointer-events-none"
           style={{ bottom: '76px' }}
         >
           <div className="flex flex-wrap gap-2 justify-center max-w-2xl pointer-events-auto">
+            {/* "Set details" chip — only shown after a task is created */}
+            {setDetailsTaskId !== null && (
+              <button
+                onClick={() => handleSetDetailsClick(setDetailsTaskId)}
+                className="px-3.5 py-1.5 rounded-lg text-[13px] font-medium text-emerald-600 bg-white border border-emerald-200 hover:bg-emerald-50 hover:border-emerald-400 shadow-md transition-all duration-150 active:scale-95"
+              >
+                ✏️ Set due date &amp; priority
+              </button>
+            )}
+            {/* Smart suggestion chips */}
             {suggestions.map((s) => (
               <button
                 key={s}
