@@ -109,15 +109,75 @@ function MicButton({ isListening, disabled, onClick }: {
 // ---------------------------------------------------------------------------
 // ChatKit mode — OpenAI ChatKit widget with bonus overlays
 // ---------------------------------------------------------------------------
+/** Inject suggestion chips into ChatKit's shadow DOM, after the last message. */
+function injectSuggestions(el: any, suggestions: string[], onClick: (text: string) => void) {
+  const shadow = el?.shadowRoot;
+  if (!shadow) return;
+
+  // Remove any previously injected suggestions
+  shadow.querySelectorAll('.tf-suggestions').forEach((n: Element) => n.remove());
+
+  if (suggestions.length === 0) return;
+
+  // Find the scrollable messages container — usually the element that scrolls
+  // Try common selectors for ChatKit's internal structure
+  const scrollContainer =
+    shadow.querySelector('[data-testid="thread-messages"]') ||
+    shadow.querySelector('[role="log"]') ||
+    shadow.querySelector('.overflow-y-auto') ||
+    shadow.querySelector('[class*="scroll"]') ||
+    shadow.querySelector('[class*="messages"]');
+
+  // Fallback: find the element right before the composer (textarea's ancestor)
+  const composer = shadow.querySelector('textarea')?.closest('form') ||
+    shadow.querySelector('textarea')?.parentElement?.parentElement?.parentElement;
+
+  const target = scrollContainer || composer?.parentElement;
+  if (!target) return;
+
+  // Create the suggestions container
+  const container = document.createElement('div');
+  container.className = 'tf-suggestions';
+  container.style.cssText =
+    'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:12px 16px 4px;';
+
+  suggestions.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.textContent = s;
+    btn.style.cssText =
+      'padding:6px 14px;border-radius:8px;font-size:13px;font-weight:500;' +
+      'color:#4f46e5;background:#fff;border:1px solid #c7d2fe;cursor:pointer;' +
+      'transition:all 0.15s;box-shadow:0 1px 2px rgba(0,0,0,0.05);';
+    btn.onmouseenter = () => {
+      btn.style.background = '#eef2ff';
+      btn.style.borderColor = '#818cf8';
+    };
+    btn.onmouseleave = () => {
+      btn.style.background = '#fff';
+      btn.style.borderColor = '#c7d2fe';
+    };
+    btn.onclick = () => onClick(s);
+    container.appendChild(btn);
+  });
+
+  if (scrollContainer) {
+    // Append at end of scroll container (after last message, before composer)
+    scrollContainer.appendChild(container);
+    // Scroll to show the suggestions
+    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+  } else if (composer) {
+    // Insert right before the composer
+    composer.parentElement?.insertBefore(container, composer);
+  }
+}
+
 function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(false);
   const chatkitElRef = useRef<any>(null);
   const threadIdRef = useRef<string | null>(null);
   const { refreshTasks } = useTaskContext();
-  const { data: session } = useSession();
   const voice = useVoiceInput();
-  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Inject voice transcript into ChatKit's input field
   useEffect(() => {
@@ -198,6 +258,14 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         threadIdRef.current = evt?.detail?.threadId || null;
       });
 
+      const onSuggestionClick = (text: string) => {
+        // Remove chips then send message
+        injectSuggestions(el, [], () => {});
+        if (typeof el.sendUserMessage === 'function') {
+          el.sendUserMessage({ text });
+        }
+      };
+
       el.addEventListener('chatkit.response.end', async () => {
         refreshTasks();
         // Bonus 3: Fetch smart suggestions after response completes
@@ -210,7 +278,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
             if (res.ok) {
               const data = await res.json();
               if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-                setSuggestions(data.suggestions);
+                injectSuggestions(el, data.suggestions, onSuggestionClick);
               }
             }
           }
@@ -221,7 +289,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
 
       // Clear suggestions when user starts a new message
       el.addEventListener('chatkit.response.start', () => {
-        setSuggestions([]);
+        injectSuggestions(el, [], () => {});
       });
 
       if (typeof el.setOptions === 'function') {
@@ -284,35 +352,9 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
     return () => { cancelled = true; };
   }, [onFail, refreshTasks]);
 
-  function handleSuggestionClick(text: string) {
-    const el = chatkitElRef.current;
-    if (el && typeof el.sendUserMessage === 'function') {
-      setSuggestions([]);
-      el.sendUserMessage({ text });
-    }
-  }
-
   return (
     <div className="flex flex-col h-full">
-      {/* ChatKit fills the space */}
       <div ref={containerRef} className="flex-1" style={{ minHeight: 0 }} />
-
-      {/* Bonus 3: Smart suggestion chips — clean inline bar below chat */}
-      {suggestions.length > 0 && (
-        <div className="flex justify-center px-4 py-2.5 border-t border-gray-100 bg-gray-50/80 backdrop-blur-sm">
-          <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                onClick={() => handleSuggestionClick(s)}
-                className="px-3.5 py-1.5 rounded-lg text-[13px] font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 hover:border-indigo-400 shadow-sm transition-all duration-150 active:scale-95"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
