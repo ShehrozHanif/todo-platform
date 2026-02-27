@@ -1,0 +1,39 @@
+replicaCount: 1
+
+image:
+  repository: IMAGE_REPOSITORY
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: APP_PORT
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: APP_HOST
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  liveness:
+    path: /health
+  readiness:
+    path: /health
+
+env: {}
+
+secrets: {}

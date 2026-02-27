@@ -1,0 +1,6 @@
+apiVersion: v2
+name: CHART_NAME
+description: A Helm chart for CHART_NAME service
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
