@@ -574,9 +574,117 @@ Main Claude
 
 ---
 
+## Improvement: Voice Task Enrichment (Path A)
+
+**Status:** [ ] Not started
+**Revert point:** `git reset --hard 58acef6`
+**Effort:** Medium
+**Touches:** Backend (`chatkit_server.py`) + Frontend (`ChatWindow.tsx`, `TaskContext.tsx`)
+
+### Problem
+
+When a task is created via voice/AI chat, only the `title` is passed to `add_task`.
+Fields like `priority`, `category`, `dueDate`, `dueTime` are left empty.
+These fields exist in the frontend (stored in `localStorage`) but the AI never sets them.
+
+### Approach
+
+**No DB change required.** The frontend already stores `priority`, `category`, `dueDate`, `dueTime` in `localStorage` via `saveTaskExtras()`. We extend the AI pipeline to populate these extras after task creation.
+
+### Two-Part Solution
+
+#### Part 1 — AI Extracts Fields from Natural Language (Option 1)
+
+Update the ChatKit server system prompt to instruct the AI to extract task details from natural language.
+
+**Examples:**
+```
+"Add a high priority task to call the doctor tomorrow at 3pm"
+  → title: "Call the doctor", priority: "high", dueDate: "2026-03-01", dueTime: "15:00"
+
+"Add a work task for the team meeting next Monday"
+  → title: "Team meeting", category: "work", dueDate: "2026-03-02"
+
+"Remind me to buy groceries, low priority"
+  → title: "Buy groceries", priority: "low"
+```
+
+**How it works:**
+1. AI extracts fields during tool call — if user said "high priority", pass it
+2. After `add_task` returns the new task ID, AI emits a `ClientEffectEvent` named `task_extras` with the extracted fields + task ID
+3. Frontend receives `task_extras` event → calls `saveTaskExtras(taskId, { priority, category, dueDate, dueTime })` → localStorage updated
+
+**Fields the AI can extract:**
+| Field | Values | Example phrase |
+|-------|--------|----------------|
+| `priority` | `high`, `medium`, `low` | "high priority", "urgent", "low priority" |
+| `category` | `work`, `personal`, `health`, `study` | "work task", "personal", "health" |
+| `dueDate` | `YYYY-MM-DD` | "tomorrow", "next Monday", "on March 5th" |
+| `dueTime` | `HH:MM` | "at 3pm", "at 9am", "at noon" |
+
+#### Part 2 — "Set Details" Suggestion Chip (Option 3)
+
+After the AI creates a task (whether fields were extracted or not), a suggestion chip appears:
+
+> **→ Set due date & priority**
+
+Clicking it opens the **EditTaskModal** pre-filled for that task, where the user can complete or correct any fields manually.
+
+**How it works:**
+1. When the AI creates a task, the `ClientEffectEvent` for `task_extras` includes the new `task_id`
+2. The suggestion chip is rendered with that `task_id` embedded
+3. Clicking the chip dispatches `OPEN_MODAL` with the task object → EditTaskModal opens
+
+### Files to Change
+
+| File | Change |
+|------|--------|
+| `backend/chatkit_server.py` | Update system prompt to extract fields; emit `ClientEffectEvent(name="task_extras", data={task_id, priority, category, dueDate, dueTime})` |
+| `frontend/components/chat/ChatWindow.tsx` | Listen for `task_extras` event; call `saveTaskExtras()`; render "Set details" chip that opens EditTaskModal |
+| `frontend/context/TaskContext.tsx` | Expose `dispatch` or a helper so ChatWindow can trigger `OPEN_MODAL` |
+
+### Execution Steps (strict order)
+
+```
+Step 1: Update chatkit_server.py system prompt
+        → Instruct AI to extract priority/category/dueDate/dueTime from natural language
+        → After add_task, emit ClientEffectEvent("task_extras", {task_id, priority, category, dueDate, dueTime})
+
+Step 2: Update ChatWindow.tsx
+        → Listen for chatkit.effect "task_extras" event
+        → Call saveTaskExtras(task_id, extracted_fields) to persist to localStorage
+        → Show "Set details →" chip using task_id
+
+Step 3: Wire "Set details" chip to EditTaskModal
+        → On click, find task by ID from context state
+        → Dispatch OPEN_MODAL with that task
+
+Step 4: Test end-to-end
+        → Speak "Add a high priority work task: review pull request"
+        → Verify task appears in dashboard with correct priority/category
+        → Verify "Set details" chip opens EditTaskModal
+
+Step 5: User approves → commit + deploy
+```
+
+### Acceptance Criteria
+
+- [ ] AI extracts `priority` when user says "high/medium/low priority" or "urgent"
+- [ ] AI extracts `category` when user mentions "work", "personal", "health", "study"
+- [ ] AI extracts `dueDate` from "tomorrow", "next Monday", specific dates
+- [ ] AI extracts `dueTime` from "at 3pm", "at 9am"
+- [ ] Extracted fields saved to localStorage via `saveTaskExtras()`
+- [ ] Task appears in dashboard with correct priority/category/due date
+- [ ] "Set details →" chip appears after every task creation
+- [ ] Clicking chip opens EditTaskModal for that task
+- [ ] If no fields extracted, chip still appears so user can fill manually
+- [ ] Graceful fallback: if event fails, task still created with title only
+
+---
+
 ## Next Step
 
-Start **Bonus 1 (Voice Input)** — add microphone button to ChatWindow.tsx with Web Speech API.
+Start **Voice Task Enrichment (Path A)** — update chatkit_server.py system prompt and wire ClientEffectEvent for task_extras.
 
 
 
