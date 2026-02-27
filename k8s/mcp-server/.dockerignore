@@ -1,0 +1,9 @@
+# [Task]: T007 [From]: specs/phase4-k8s/containerization/spec.md §FR-005
+.venv
+__pycache__
+*.pyc
+.env
+.env.*
+.git
+.gitignore
+test_tools.py

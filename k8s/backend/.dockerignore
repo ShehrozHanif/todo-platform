@@ -1,0 +1,14 @@
+# [Task]: T003 [From]: specs/phase4-k8s/containerization/spec.md §FR-005
+.venv
+__pycache__
+*.pyc
+tests/
+.env
+.env.*
+.git
+.gitignore
+.pytest_cache
+debug.log
+CLAUDE.md
+vercel.json
+api/

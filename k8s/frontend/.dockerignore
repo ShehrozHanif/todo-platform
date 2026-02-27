@@ -1,0 +1,10 @@
+# [Task]: T005 [From]: specs/phase4-k8s/containerization/spec.md §FR-005
+node_modules
+.next
+.env
+.env.local
+.env.*
+.git
+.gitignore
+.turbo
+CLAUDE.md
