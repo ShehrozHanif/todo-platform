@@ -1,0 +1,16 @@
+{{/* [Task]: T004 [From]: specs/phase4-k8s/helm-deployment/spec.md §FR-004 */}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mcp-server.fullname" . }}
+  labels:
+    {{- include "mcp-server.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "mcp-server.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+      name: sse

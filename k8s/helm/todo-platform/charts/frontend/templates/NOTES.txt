@@ -1,0 +1,5 @@
+Frontend deployed: {{ include "frontend.fullname" . }}
+Service: {{ .Values.service.type }} on port {{ .Values.service.port }}
+{{- if eq .Values.service.type "NodePort" }}
+Access via: minikube service {{ include "frontend.fullname" . }}
+{{- end }}

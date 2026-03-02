@@ -24,7 +24,10 @@
       "Bash(head:*)",
       "Bash(true:*)",
       "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/frontend\" && npx tsc --noEmit 2>&1)",
-      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/backend\" && uv run uvicorn main:app --reload --port 8000 2>&1)"
+      "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/backend\" && uv run uvicorn main:app --reload --port 8000 2>&1)",
+      "Bash(python:*)",
+      "Bash(vercel:*)",
+      "Bash(bash:*)"
     ]
   }
 }

@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: todo-mcp
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8001
+  targetPort: 8001
+
+secrets:
+  DATABASE_URL: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  liveness:
+    port: 8001
+    initialDelaySeconds: 10
+    periodSeconds: 30

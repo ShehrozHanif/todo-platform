@@ -1,0 +1,35 @@
+replicaCount: 1
+
+image:
+  repository: todo-frontend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 3000
+  targetPort: 3000
+  nodePort: 30000
+
+env:
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+  BETTER_AUTH_URL: "http://localhost:3000"
+  NEXT_PUBLIC_API_URL: "http://todo-backend:8000"
+
+secrets:
+  DATABASE_URL: ""
+  BETTER_AUTH_SECRET: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+probes:
+  readiness:
+    port: 3000
+    initialDelaySeconds: 5
+    periodSeconds: 10

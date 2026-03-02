@@ -1,0 +1,7 @@
+# [Task]: T004 [From]: specs/phase4-k8s/helm-deployment/spec.md §FR-004
+apiVersion: v2
+name: mcp-server
+description: MCP Server for Todo Platform AI agent
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

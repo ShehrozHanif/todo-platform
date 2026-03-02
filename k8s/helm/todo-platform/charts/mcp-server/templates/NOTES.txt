@@ -1,0 +1,3 @@
+MCP Server deployed: {{ include "mcp-server.fullname" . }}
+Service: {{ .Values.service.type }} on port {{ .Values.service.port }}
+SSE endpoint: http://{{ include "mcp-server.fullname" . }}:{{ .Values.service.port }}/sse

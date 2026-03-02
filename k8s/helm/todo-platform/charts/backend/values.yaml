@@ -1,0 +1,38 @@
+replicaCount: 1
+
+image:
+  repository: todo-backend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+env:
+  ALLOWED_ORIGINS: "http://localhost:3000"
+  MCP_SERVER_URL: "http://todo-mcp-server:8001/sse"
+
+secrets:
+  DATABASE_URL: ""
+  BETTER_AUTH_SECRET: ""
+  OPENAI_API_KEY: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readiness:
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10

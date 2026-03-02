@@ -1,0 +1,73 @@
+# [Task]: T001 [From]: specs/phase4-k8s/helm-deployment/spec.md §FR-001
+# Global values — override subchart defaults here
+
+backend:
+  replicaCount: 1
+  image:
+    repository: todo-backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  env:
+    ALLOWED_ORIGINS: "http://localhost:3000"
+    MCP_SERVER_URL: "http://todo-mcp-server:8001/sse"
+  secrets:
+    DATABASE_URL: ""
+    BETTER_AUTH_SECRET: ""
+    OPENAI_API_KEY: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+frontend:
+  replicaCount: 1
+  image:
+    repository: todo-frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 3000
+    targetPort: 3000
+    nodePort: 30000
+  env:
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+    BETTER_AUTH_URL: "http://localhost:3000"
+    NEXT_PUBLIC_API_URL: "http://todo-backend:8000"
+  secrets:
+    DATABASE_URL: ""
+    BETTER_AUTH_SECRET: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+mcp-server:
+  replicaCount: 1
+  image:
+    repository: todo-mcp
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  secrets:
+    DATABASE_URL: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
