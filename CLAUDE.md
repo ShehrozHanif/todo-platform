@@ -1,4 +1,4 @@
-# Claude Code Rules
+﻿# Claude Code Rules
 See @AGENTS.md for project context and guidelines.
 
 
