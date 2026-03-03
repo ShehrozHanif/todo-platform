@@ -1,0 +1,10 @@
+{{/* [Task]: T034 [From]: specs/phase5-cloud/kafka-events/spec.md §FR-020 */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kafka-consumer.fullname" . }}-config
+  labels:
+    {{- include "kafka-consumer.labels" . | nindent 4 }}
+data:
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.env.KAFKA_BOOTSTRAP_SERVERS | quote }}
+  KAFKA_TOPIC_PREFIX: {{ .Values.env.KAFKA_TOPIC_PREFIX | quote }}

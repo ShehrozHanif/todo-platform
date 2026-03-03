@@ -16,6 +16,9 @@ dependencies = [
     "httpx>=0.28.0",
     "openai-agents>=0.0.7",
     "openai-chatkit>=0.1.0",
+    "aiokafka>=0.11",
+    "dapr==1.15.0",
+    "dapr-ext-fastapi==1.15.0",
 ]
 
 [tool.uv]

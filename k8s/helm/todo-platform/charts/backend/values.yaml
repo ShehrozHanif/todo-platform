@@ -1,5 +1,9 @@
 replicaCount: 1
 
+# Dapr sidecar injection (US5 — Service Invocation)
+dapr:
+  enabled: false
+
 image:
   repository: todo-backend
   tag: "latest"

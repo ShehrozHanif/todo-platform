@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: kafka-pubsub
+  namespace: todo-platform
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+    - name: brokers
+      value: "kafka:9092"
+    - name: authType
+      value: "none"
+    - name: consumerGroup
+      value: "todo-platform-consumers"
+    - name: initialOffset
+      value: "newest"

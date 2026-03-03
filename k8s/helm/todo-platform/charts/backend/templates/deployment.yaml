@@ -16,6 +16,12 @@ spec:
         {{- include "backend.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.dapr.enabled }}
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "todo-backend"
+        dapr.io/app-port: "8000"
+        dapr.io/log-level: "info"
+        {{- end }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
