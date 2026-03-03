@@ -1,67 +1,41 @@
 // API client — wires TaskFlow UI to FastAPI backend.
-// Backend tasks are mapped to TaskFlow's Task type (priority/category/dueDate get defaults).
+// Phase 5: All fields stored in backend DB — no localStorage.
 'use client';
 
 import type { Task } from '@/lib/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Shape the backend returns
+// Shape the backend returns (Phase 5: includes all advanced fields)
 interface BackendTask {
   id: number;
   user_id: string;
   title: string;
   description: string | null;
   completed: boolean;
+  priority: string | null;
+  category: string | null;
+  tags: string[] | null;
+  due_date: string | null;
+  due_time: string | null;
+  recurring: string | null;
+  reminder: boolean | null;
   created_at: string | null;
   updated_at: string | null;
 }
 
-/** UI-only fields that the backend doesn't store. */
-interface TaskExtras {
-  priority?: string;
-  category?: string;
-  dueDate?: string;
-  dueTime?: string;
-  recurring?: boolean;
-  reminder?: boolean;
-}
-
-const EXTRAS_PREFIX = 'taskflow-extras-';
-
-/** Persist UI-only fields for a task in localStorage. */
-export function saveTaskExtras(taskId: string, extras: TaskExtras): void {
-  try {
-    localStorage.setItem(`${EXTRAS_PREFIX}${taskId}`, JSON.stringify(extras));
-  } catch { /* quota exceeded — silently ignore */ }
-}
-
-/** Read persisted UI-only fields for a task. */
-export function getTaskExtras(taskId: string): TaskExtras {
-  try {
-    const raw = localStorage.getItem(`${EXTRAS_PREFIX}${taskId}`);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
-}
-
-/** Remove persisted extras when a task is deleted. */
-export function removeTaskExtras(taskId: string): void {
-  try { localStorage.removeItem(`${EXTRAS_PREFIX}${taskId}`); } catch { /* ignore */ }
-}
-
-/** Map a backend task to the TaskFlow Task shape, merging any stored extras. */
+/** Map a backend task to the TaskFlow Task shape. */
 function mapTask(t: BackendTask): Task {
-  const extras = getTaskExtras(t.id.toString());
   return {
     id: t.id.toString(),
     title: t.title,
     description: t.description ?? undefined,
-    priority: (extras.priority as Task['priority']) || 'medium',
-    category: extras.category || 'work',
-    dueDate: extras.dueDate || undefined,
-    dueTime: extras.dueTime || undefined,
-    recurring: extras.recurring,
-    reminder: extras.reminder,
+    priority: (t.priority as Task['priority']) || 'medium',
+    category: t.category || 'work',
+    dueDate: t.due_date ?? undefined,
+    dueTime: t.due_time ?? undefined,
+    recurring: t.recurring ?? undefined,
+    reminder: t.reminder ?? undefined,
     completed: t.completed,
     createdAt: t.created_at ?? new Date().toISOString(),
   };
@@ -98,12 +72,52 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return response.json() as Promise<T>;
 }
 
-export async function getTasks(userId: string): Promise<Task[]> {
-  const tasks = await apiFetch<BackendTask[]>(`/api/${userId}/tasks`);
+export interface TaskQueryParams {
+  search?: string;
+  priority?: string;
+  category?: string;
+  completed?: boolean;
+  tags?: string;
+  due_date_from?: string;
+  due_date_to?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
+export async function getTasks(userId: string, params?: TaskQueryParams): Promise<Task[]> {
+  let path = `/api/${userId}/tasks`;
+  if (params) {
+    const qs = new URLSearchParams();
+    if (params.search)        qs.set('search', params.search);
+    if (params.priority)      qs.set('priority', params.priority);
+    if (params.category)      qs.set('category', params.category);
+    if (params.completed !== undefined) qs.set('completed', String(params.completed));
+    if (params.tags)          qs.set('tags', params.tags);
+    if (params.due_date_from) qs.set('due_date_from', params.due_date_from);
+    if (params.due_date_to)   qs.set('due_date_to', params.due_date_to);
+    if (params.sort)          qs.set('sort', params.sort);
+    if (params.order)         qs.set('order', params.order);
+    const qstr = qs.toString();
+    if (qstr) path = `${path}?${qstr}`;
+  }
+  const tasks = await apiFetch<BackendTask[]>(path);
   return tasks.map(mapTask);
 }
 
-export async function createTask(userId: string, data: { title: string; description?: string }): Promise<Task> {
+export async function createTask(
+  userId: string,
+  data: {
+    title: string;
+    description?: string;
+    priority?: string;
+    category?: string;
+    tags?: string[];
+    due_date?: string;
+    due_time?: string;
+    recurring?: string;
+    reminder?: boolean;
+  },
+): Promise<Task> {
   const task = await apiFetch<BackendTask>(`/api/${userId}/tasks`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -114,7 +128,17 @@ export async function createTask(userId: string, data: { title: string; descript
 export async function updateTask(
   userId: string,
   taskId: string,
-  data: { title?: string; description?: string },
+  data: {
+    title?: string;
+    description?: string;
+    priority?: string;
+    category?: string;
+    tags?: string[];
+    due_date?: string;
+    due_time?: string;
+    recurring?: string;
+    reminder?: boolean;
+  },
 ): Promise<Task> {
   const task = await apiFetch<BackendTask>(`/api/${userId}/tasks/${taskId}`, {
     method: 'PUT',

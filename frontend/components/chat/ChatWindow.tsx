@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/lib/auth-client';
-import { sendChatMessage, getChatHistory, saveTaskExtras } from '@/lib/api';
+import { sendChatMessage, getChatHistory } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -207,19 +207,10 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
             });
             if (res.ok) {
               const data = await res.json();
-              // Path A: save task extras to localStorage BEFORE refreshing tasks
-              // so mapTask() picks them up when tasks are re-fetched
+              // Phase 5: task extras now stored in DB via MCP server — just refresh
               if (data.task_extras?.task_id != null) {
-                const { task_id, priority, category, dueDate, dueTime } = data.task_extras;
-                saveTaskExtras(String(task_id), {
-                  ...(priority && { priority }),
-                  ...(category && { category }),
-                  ...(dueDate && { dueDate }),
-                  ...(dueTime && { dueTime }),
-                });
-                setSetDetailsTaskId(task_id);
+                setSetDetailsTaskId(data.task_extras.task_id);
               }
-              // Now refresh — mapTask() will merge the just-saved localStorage extras
               refreshTasks();
               // Smart suggestions
               if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {

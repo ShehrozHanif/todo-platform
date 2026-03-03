@@ -4,7 +4,6 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback } 
 import { Task, TaskAction, TaskState } from '@/lib/types';
 import { useSession } from '@/lib/auth-client';
 import * as api from '@/lib/api';
-import { saveTaskExtras, removeTaskExtras } from '@/lib/api';
 
 type InternalAction = TaskAction | { type: 'SET_TASKS'; payload: Task[] };
 
@@ -100,12 +99,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     switch (action.type) {
       case 'ADD': {
         const { title, description, priority, category, dueDate, dueTime, recurring, reminder } = action.payload;
-        api.createTask(userId, { title, description })
-          .then(created => {
-            // Persist UI-only fields keyed by the backend-assigned ID
-            saveTaskExtras(created.id, { priority, category, dueDate, dueTime, recurring, reminder });
-            return api.getTasks(userId);
-          })
+        api.createTask(userId, {
+          title,
+          description,
+          priority,
+          category,
+          due_date: dueDate || undefined,
+          due_time: dueTime || undefined,
+          recurring: recurring || undefined,
+          reminder,
+        })
+          .then(() => api.getTasks(userId))
           .then(tasks => {
             rawDispatch({ type: 'SET_TASKS', payload: tasks });
             rawDispatch({ type: 'CLOSE_MODAL' });
@@ -122,7 +126,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       case 'DELETE': {
         rawDispatch(action as InternalAction); // optimistic
-        removeTaskExtras(action.payload); // clean up persisted extras
         api.deleteTask(userId, action.payload).catch(() => {
           api.getTasks(userId)
             .then(tasks => rawDispatch({ type: 'SET_TASKS', payload: tasks }))
@@ -132,17 +135,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       case 'EDIT': {
         const task = action.payload;
-        // Persist UI-only fields so they survive API round-trips
-        saveTaskExtras(task.id, {
+        rawDispatch(action as InternalAction); // optimistic
+        api.updateTask(userId, task.id, {
+          title: task.title,
+          description: task.description,
           priority: task.priority,
           category: task.category,
-          dueDate: task.dueDate,
-          dueTime: task.dueTime,
-          recurring: task.recurring,
+          due_date: task.dueDate || undefined,
+          due_time: task.dueTime || undefined,
+          recurring: task.recurring || undefined,
           reminder: task.reminder,
-        });
-        rawDispatch(action as InternalAction); // optimistic (keeps priority/category/dueDate)
-        api.updateTask(userId, task.id, { title: task.title, description: task.description }).catch(() => {
+        }).catch(() => {
           api.getTasks(userId)
             .then(tasks => rawDispatch({ type: 'SET_TASKS', payload: tasks }))
             .catch(console.error);

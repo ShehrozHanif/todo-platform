@@ -5,10 +5,10 @@
 #       SQLModel table models with table=True bypass Pydantic validators on construction.
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, Text, func
+from sqlalchemy import Column, Date, DateTime, Text, func
 from sqlmodel import Field, SQLModel
 
 
@@ -56,6 +56,16 @@ class Task(SQLModel, table=True):
     title: str = Field(max_length=200, nullable=False)
     description: Optional[str] = Field(default=None, max_length=1000)
     completed: bool = Field(default=False, nullable=False, index=True)
+    # Phase 5: Advanced feature fields
+    priority: Optional[str] = Field(default=None, max_length=6, index=True)
+    category: Optional[str] = Field(default=None, max_length=50)
+    tags: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    due_date: Optional[date] = Field(
+        default=None, sa_column=Column(Date, nullable=True)
+    )
+    due_time: Optional[str] = Field(default=None, max_length=5)
+    recurring: Optional[str] = Field(default=None, max_length=7)
+    reminder: Optional[bool] = Field(default=False)
     created_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(

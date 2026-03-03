@@ -89,7 +89,7 @@ export function TaskModal() {
   const [category, setCategory] = useState('work');
   const [dueDate, setDueDate] = useState('');
   const [dueTime, setDueTime] = useState('');
-  const [recurring, setRecurring] = useState(false);
+  const [recurring, setRecurring] = useState<string | undefined>(undefined);
   const [reminder, setReminder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -106,7 +106,7 @@ export function TaskModal() {
       setCategory(editingTask.category);
       setDueDate(editingTask.dueDate ?? '');
       setDueTime(editingTask.dueTime ?? '');
-      setRecurring(editingTask.recurring ?? false);
+      setRecurring(editingTask.recurring ?? undefined);
       setReminder(editingTask.reminder ?? false);
     } else {
       setTitle('');
@@ -115,7 +115,7 @@ export function TaskModal() {
       setCategory('work');
       setDueDate('');
       setDueTime('');
-      setRecurring(false);
+      setRecurring(undefined);
       setReminder(false);
     }
   }, [editingTask, modalOpen]);
@@ -191,7 +191,7 @@ interface ContentProps {
   category: string; setCategory: (v: string) => void;
   dueDate: string; setDueDate: (v: string) => void;
   dueTime: string; setDueTime: (v: string) => void;
-  recurring: boolean; setRecurring: (v: boolean) => void;
+  recurring: string | undefined; setRecurring: (v: string | undefined) => void;
   reminder: boolean; setReminder: (v: boolean) => void;
   handleSubmit: (e: React.FormEvent) => void;
   submitting: boolean;
@@ -362,7 +362,21 @@ function ModalContent({
             <p className="text-[13.5px] font-semibold text-gray-900 dark:text-white">Recurring Task</p>
             <p className="text-[11.5px] text-gray-400 dark:text-[#5B6180]">Repeat Daily / Weekly / Monthly</p>
           </div>
-          <Toggle checked={recurring} onChange={setRecurring} disabled={isCompleted} />
+          <select
+            value={recurring || ''}
+            onChange={e => !isCompleted && setRecurring(e.target.value || undefined)}
+            disabled={isCompleted}
+            className={cn(
+              'text-[13px] font-semibold rounded-lg border px-3 py-1.5 outline-none transition-colors',
+              'bg-gray-100 dark:bg-[#1C1D30] border-gray-200 dark:border-[#252742] text-gray-900 dark:text-white',
+              isCompleted && 'opacity-50 cursor-default'
+            )}
+          >
+            <option value="">None</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
         </div>
 
         {/* Reminder */}
