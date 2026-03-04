@@ -11,3 +11,5 @@ build/
 htmlcov/
 *.egg
 .mypy_cache/
+# Kubernetes secrets — never commit real values
+k8s/helm/todo-platform/secrets.yaml
