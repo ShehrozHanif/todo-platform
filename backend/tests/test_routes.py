@@ -1,6 +1,9 @@
 # [Task]: T012-T018 / T007 [From]: specs/phase2-web/rest-api/tasks.md + authentication/tasks.md
 # Integration tests for Task CRUD API endpoints — with JWT auth headers.
 # Spec: SC-001 to SC-004 | FR-001 to FR-010
+# Phase 5: Dapr Pub/Sub integration tests §FR-001–FR-006 (Kafka replaced by Dapr sidecar)
+
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -340,3 +343,114 @@ async def test_toggle_nonexistent_404(
         f"/api/{seed_user.id}/tasks/99999/complete", headers=auth_headers
     )
     assert resp.status_code == 404
+
+
+# ── Kafka Publish Integration Tests ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_task_publishes_created_event(
+    client: AsyncClient, seed_user: User, auth_headers: dict
+) -> None:
+    """FR-001: create_task fires task.created on both task-events and task-updates topics."""
+    with patch("routes.tasks._publish_sync") as mock_pub:
+        resp = await client.post(
+            f"/api/{seed_user.id}/tasks",
+            json={"title": "Dapr Task"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 201
+    assert mock_pub.call_count == 2  # dual publish: task-events + task-updates
+    assert mock_pub.call_args_list[0].args[2]["event_type"] == "task.created"
+
+
+@pytest.mark.asyncio
+async def test_update_task_publishes_updated_event_with_changed_fields(
+    client: AsyncClient, seed_task: Task, auth_headers: dict
+) -> None:
+    """FR-002: update_task fires task.updated with correct changed_fields list."""
+    with patch("routes.tasks._publish_sync") as mock_pub:
+        resp = await client.put(
+            f"/api/{seed_task.user_id}/tasks/{seed_task.id}",
+            json={"title": "New Title"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert mock_pub.call_count == 2  # dual publish: task-events + task-updates
+    event = mock_pub.call_args_list[0].args[2]
+    assert event["event_type"] == "task.updated"
+    assert "title" in event["changed_fields"]
+
+
+@pytest.mark.asyncio
+async def test_delete_task_publishes_deleted_event(
+    client: AsyncClient, seed_task: Task, auth_headers: dict
+) -> None:
+    """FR-003: delete_task fires task.deleted event before row removal."""
+    with patch("routes.tasks._publish_sync") as mock_pub:
+        resp = await client.delete(
+            f"/api/{seed_task.user_id}/tasks/{seed_task.id}",
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 204
+    assert mock_pub.call_count == 2  # dual publish: task-events + task-updates
+    assert mock_pub.call_args_list[0].args[2]["event_type"] == "task.deleted"
+
+
+@pytest.mark.asyncio
+async def test_toggle_complete_publishes_completed_event(
+    client: AsyncClient, seed_task: Task, auth_headers: dict
+) -> None:
+    """FR-004: first toggle fires task.completed event."""
+    with patch("routes.tasks._publish_sync") as mock_pub:
+        resp = await client.patch(
+            f"/api/{seed_task.user_id}/tasks/{seed_task.id}/complete",
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert mock_pub.call_count == 2  # dual publish: task-events + task-updates
+    assert mock_pub.call_args_list[0].args[2]["event_type"] == "task.completed"
+
+
+@pytest.mark.asyncio
+async def test_toggle_complete_publishes_reopened_event(
+    client: AsyncClient, seed_task: Task, auth_headers: dict
+) -> None:
+    """FR-004: re-toggle on completed task fires task.reopened event."""
+    with patch("routes.tasks._publish_sync"):
+        # First toggle — mark complete
+        await client.patch(
+            f"/api/{seed_task.user_id}/tasks/{seed_task.id}/complete",
+            headers=auth_headers,
+        )
+
+    with patch("routes.tasks._publish_sync") as mock_pub2:
+        # Second toggle — reopen
+        resp = await client.patch(
+            f"/api/{seed_task.user_id}/tasks/{seed_task.id}/complete",
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    assert mock_pub2.call_count == 2  # dual publish: task-events + task-updates
+    assert mock_pub2.call_args_list[0].args[2]["event_type"] == "task.reopened"
+
+
+@pytest.mark.asyncio
+async def test_create_task_does_not_fail_when_dapr_down(
+    client: AsyncClient, seed_user: User, auth_headers: dict
+) -> None:
+    """SC-002/FR-006: API returns 201 even if Dapr sidecar is unavailable."""
+    with patch("sidecar.pubsub.DaprClient") as mock_cls:
+        mock_cls.side_effect = RuntimeError("sidecar down")
+        resp = await client.post(
+            f"/api/{seed_user.id}/tasks",
+            json={"title": "No Dapr"},
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 201

@@ -27,7 +27,10 @@
       "Bash(cd \"/c/Users/Shehroz Hanif/Desktop/New folder/todo-platform/backend\" && uv run uvicorn main:app --reload --port 8000 2>&1)",
       "Bash(python:*)",
       "Bash(vercel:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(mkdir:*)",
+      "Bash(powershell:*)",
+      "Bash(powershell.exe:*)"
     ]
   }
 }

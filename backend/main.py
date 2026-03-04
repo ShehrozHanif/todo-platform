@@ -11,6 +11,7 @@ from db import lifespan
 from routes.tasks import router as tasks_router
 from routes.chat import router as chat_router
 from routes.chatkit import router as chatkit_router
+from routes.jobs import router as jobs_router
 
 load_dotenv()
 
@@ -38,6 +39,8 @@ def create_app() -> FastAPI:
     app.include_router(tasks_router, prefix="/api")
     app.include_router(chat_router, prefix="/api")
     app.include_router(chatkit_router)
+    # Dapr Jobs callback — no prefix; Dapr calls /job/reminder-scan at app root
+    app.include_router(jobs_router)
 
     @app.get("/health")
     async def health_check() -> dict[str, str]:

@@ -30,12 +30,25 @@ async def _validate_user(session, user_id: str) -> User | None:
 
 def _task_to_dict(task: Task) -> dict:
     """Convert a Task model to a JSON-serializable dict."""
+    tags = None
+    if task.tags:
+        try:
+            tags = json.loads(task.tags)
+        except (json.JSONDecodeError, TypeError):
+            tags = None
     return {
         "id": task.id,
         "user_id": task.user_id,
         "title": task.title,
         "description": task.description,
         "completed": task.completed,
+        "priority": task.priority,
+        "category": task.category,
+        "tags": tags,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "due_time": task.due_time,
+        "recurring": task.recurring,
+        "reminder": task.reminder,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "updated_at": task.updated_at.isoformat() if task.updated_at else None,
     }
@@ -45,8 +58,22 @@ def _task_to_dict(task: Task) -> dict:
 
 
 @mcp.tool()
-async def add_task(user_id: str, title: str, description: Optional[str] = None) -> str:
-    """Create a new task for a user. Returns the created task as JSON."""
+async def add_task(
+    user_id: str,
+    title: str,
+    description: Optional[str] = None,
+    priority: Optional[str] = None,
+    category: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    due_date: Optional[str] = None,
+    due_time: Optional[str] = None,
+    recurring: Optional[str] = None,
+    reminder: Optional[bool] = None,
+) -> str:
+    """Create a new task for a user. Returns the created task as JSON.
+    priority: high/medium/low. recurring: daily/weekly/monthly.
+    due_date: ISO format (YYYY-MM-DD). due_time: HH:MM format.
+    tags: list of string labels."""
     logger.info(f"add_task called: user_id={user_id}, title={title}")
     try:
         # Validate inputs
@@ -56,12 +83,31 @@ async def add_task(user_id: str, title: str, description: Optional[str] = None) 
             return json.dumps({"error": "Title must be 200 characters or less"})
         if description and len(description) > 1000:
             return json.dumps({"error": "Description must be 1000 characters or less"})
+        if priority and priority not in ("high", "medium", "low"):
+            return json.dumps({"error": "priority must be high, medium, or low"})
+        if recurring and recurring not in ("daily", "weekly", "monthly"):
+            return json.dumps({"error": "recurring must be daily, weekly, or monthly"})
+
+        from datetime import date as date_type
+        parsed_due_date = None
+        if due_date:
+            try:
+                parsed_due_date = date_type.fromisoformat(due_date)
+            except ValueError:
+                return json.dumps({"error": "due_date must be in YYYY-MM-DD format"})
 
         async with get_session() as session:
             task = Task(
                 user_id=user_id,
                 title=title.strip(),
                 description=description.strip() if description else None,
+                priority=priority,
+                category=category,
+                tags=json.dumps(tags) if tags else None,
+                due_date=parsed_due_date,
+                due_time=due_time,
+                recurring=recurring,
+                reminder=reminder,
             )
             session.add(task)
             await session.flush()
@@ -150,18 +196,37 @@ async def update_task(
     task_id: int,
     title: Optional[str] = None,
     description: Optional[str] = None,
+    priority: Optional[str] = None,
+    category: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    due_date: Optional[str] = None,
+    due_time: Optional[str] = None,
+    recurring: Optional[str] = None,
+    reminder: Optional[bool] = None,
 ) -> str:
-    """Update a task's title and/or description. Returns the updated task as JSON."""
+    """Update a task's fields. Returns the updated task as JSON.
+    priority: high/medium/low. recurring: daily/weekly/monthly.
+    due_date: ISO format (YYYY-MM-DD). due_time: HH:MM format."""
     logger.info(f"update_task called: user_id={user_id}, task_id={task_id}")
     try:
-        if title is None and description is None:
-            return json.dumps({"error": "Provide at least title or description to update"})
         if title is not None and not title.strip():
             return json.dumps({"error": "Title cannot be empty"})
         if title is not None and len(title) > 200:
             return json.dumps({"error": "Title must be 200 characters or less"})
         if description is not None and len(description) > 1000:
             return json.dumps({"error": "Description must be 1000 characters or less"})
+        if priority is not None and priority not in ("high", "medium", "low"):
+            return json.dumps({"error": "priority must be high, medium, or low"})
+        if recurring is not None and recurring not in ("daily", "weekly", "monthly"):
+            return json.dumps({"error": "recurring must be daily, weekly, or monthly"})
+
+        from datetime import date as date_type
+        parsed_due_date = None
+        if due_date:
+            try:
+                parsed_due_date = date_type.fromisoformat(due_date)
+            except ValueError:
+                return json.dumps({"error": "due_date must be in YYYY-MM-DD format"})
 
         async with get_session() as session:
             statement = select(Task).where(Task.id == task_id, Task.user_id == user_id)
@@ -174,6 +239,20 @@ async def update_task(
                 task.title = title.strip()
             if description is not None:
                 task.description = description.strip() if description else None
+            if priority is not None:
+                task.priority = priority
+            if category is not None:
+                task.category = category
+            if tags is not None:
+                task.tags = json.dumps(tags) if tags else None
+            if due_date is not None:
+                task.due_date = parsed_due_date
+            if due_time is not None:
+                task.due_time = due_time
+            if recurring is not None:
+                task.recurring = recurring
+            if reminder is not None:
+                task.reminder = reminder
 
             session.add(task)
             await session.flush()

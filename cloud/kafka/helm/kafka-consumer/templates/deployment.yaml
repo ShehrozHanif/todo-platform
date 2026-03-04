@@ -1,0 +1,26 @@
+{{/* [Task]: T035 [From]: specs/phase5-cloud/kafka-events/spec.md §FR-020 */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka-consumer.fullname" . }}
+  labels:
+    {{- include "kafka-consumer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kafka-consumer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kafka-consumer.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: kafka-consumer
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "kafka-consumer.fullname" . }}-config
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -167,21 +167,31 @@ export function CalendarGrid({ mini = false }: CalendarGridProps) {
                   cell.type === 'current' && !todayCell && 'text-gray-800 dark:text-[#c0c6e0]',
                 )}>{cell.day}</span>
 
-                {/* Task bars — full-width indigo bars with left accent border */}
+                {/* Task bars — color-coded by priority with time badge */}
                 <div className="flex flex-col gap-[4px] w-full mt-auto">
-                  {tasks.slice(0, 3).map(t => (
-                    <div
-                      key={t.id}
-                      className={cn(
-                        'w-full text-[11px] font-medium text-white rounded-[4px] px-2 py-[3px] truncate border-l-[3px]',
-                        t.completed
-                          ? 'bg-indigo-400/50 dark:bg-indigo-600/35 border-l-indigo-300 dark:border-l-indigo-500 line-through opacity-70'
-                          : 'bg-indigo-600 dark:bg-indigo-500 border-l-indigo-800 dark:border-l-indigo-300',
-                      )}
-                    >
-                      {t.title}
-                    </div>
-                  ))}
+                  {tasks.slice(0, 3).map(t => {
+                    const priorityStyles = t.completed
+                      ? 'bg-gray-300/60 dark:bg-gray-600/30 border-l-gray-400 dark:border-l-gray-500 line-through opacity-60'
+                      : t.priority === 'high'
+                        ? 'bg-red-500 dark:bg-red-600 border-l-red-800 dark:border-l-red-300'
+                        : t.priority === 'low'
+                          ? 'bg-emerald-500 dark:bg-emerald-600 border-l-emerald-800 dark:border-l-emerald-300'
+                          : 'bg-indigo-600 dark:bg-indigo-500 border-l-indigo-800 dark:border-l-indigo-300';
+                    return (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          'w-full text-[11px] font-medium text-white rounded-[4px] px-2 py-[3px] truncate border-l-[3px] flex items-center gap-1',
+                          priorityStyles,
+                        )}
+                      >
+                        <span className="truncate">{t.title}</span>
+                        {t.dueTime && !t.completed && (
+                          <span className="flex-shrink-0 text-[9px] opacity-80 bg-white/20 rounded px-1">{t.dueTime}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                   {tasks.length > 3 && (
                     <div className="text-[10px] font-medium text-indigo-500 dark:text-indigo-400 pl-1">+{tasks.length - 3} more</div>
                   )}

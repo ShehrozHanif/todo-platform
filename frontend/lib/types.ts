@@ -9,7 +9,7 @@ export interface Task {
   category: string;
   dueDate?: string;
   dueTime?: string;
-  recurring?: boolean;
+  recurring?: string;
   reminder?: boolean;
   completed: boolean;
   createdAt: string;

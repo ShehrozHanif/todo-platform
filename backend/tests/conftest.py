@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from unittest.mock import patch
+
 import db as db_module
 import middleware.auth as auth_module
 import models  # noqa: F401 — ensures SQLModel.metadata is populated
@@ -46,6 +48,16 @@ def create_test_token(user_id: str = "test-user-1") -> str:
     return pyjwt.encode(payload, TEST_SECRET, algorithm="HS256")
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(autouse=True)
+def stub_dapr_client() -> None:  # type: ignore[return]
+    """Prevent real Dapr sidecar connections in background tasks during all tests.
+    Individual tests that need to assert on DaprClient behaviour override this with
+    their own inner patch(...) context manager (innermost patch takes precedence).
+    """
+    with patch("sidecar.pubsub.DaprClient"), patch("sidecar.state.DaprClient"):
+        yield
 
 
 @pytest.fixture(autouse=True)

@@ -690,7 +690,7 @@ i understand docker then kubernetess now what is helm
 
   Step 2: Open two terminals and run both:
   kubectl port-forward -n todo-app svc/todo-frontend 3000:3000
-  kubectl port-forward -n todo-app svc/todo-backend 8000:8000
+  
 
   Step 3: Open browser at http://localhost:3000
 
@@ -741,3 +741,82 @@ i understand docker then kubernetess now what is helm
   ---
   Your Vercel + Render deployment from Phase 3 is still live online. Phase 4 just adds the ability to run the same app locally through  
   Docker + Kubernetes — like a professional would in a real company.
+
+
+
+
+
+
+
+## Phase 4 Requirements Check
+
+  Feature 1: Containerization ✅
+
+  ┌───────────────────────────────────────────────────┬───────────────────────────────────────┐
+  │                    Requirement                    │                Status                 │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ Dockerfile for backend (Python + UV, multi-stage) │ ✅ k8s/backend/Dockerfile             │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ Dockerfile for frontend (Next.js standalone)      │ ✅ k8s/frontend/Dockerfile            │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ Dockerfile for MCP server                         │ ✅ k8s/mcp-server/Dockerfile          │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ Docker Compose (runs all 3 together)              │ ✅ k8s/docker-compose.yml             │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ Gordon (Docker AI)                                │ ✅ Installed and working              │
+  ├───────────────────────────────────────────────────┼───────────────────────────────────────┤
+  │ spec.md / plan.md / tasks.md                      │ ✅ specs/phase4-k8s/containerization/ │
+  └───────────────────────────────────────────────────┴───────────────────────────────────────┘
+
+  ---
+  Feature 2: Helm Deployment ✅
+
+  ┌───────────────────────────────┬──────────────────────────────────────────────┐
+  │          Requirement          │                    Status                    │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ Helm chart for backend        │ ✅ k8s/helm/todo-platform/charts/backend/    │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ Helm chart for frontend       │ ✅ k8s/helm/todo-platform/charts/frontend/   │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ Helm chart for mcp-server     │ ✅ k8s/helm/todo-platform/charts/mcp-server/ │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ Umbrella chart                │ ✅ k8s/helm/todo-platform/                   │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ Minikube deployment (working) │ ✅ Deployed and tested                       │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ kubectl-ai                    │ ✅ Installed                                 │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ kagent                        │ ✅ Installed in cluster                      │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ DEPLOY.md step-by-step guide  │ ✅ k8s/helm/todo-platform/DEPLOY.md          │
+  ├───────────────────────────────┼──────────────────────────────────────────────┤
+  │ spec.md / plan.md / tasks.md  │ ✅ specs/phase4-k8s/helm-deployment/         │
+  └───────────────────────────────┴──────────────────────────────────────────────┘
+
+  ---
+  Bonus: Cloud-Native Blueprints +200 pts ✅
+
+  ┌──────────────────────────────┬───────────────────────────────────────────┐
+  │         Requirement          │                  Status                   │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ docker-blueprint skill       │ ✅ .claude/skills/docker-blueprint/       │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ helm-blueprint skill         │ ✅ .claude/skills/helm-blueprint/         │
+  ├──────────────────────────────┼───────────────────────────────────────────┤
+  │ k8s-manifest-generator skill │ ✅ .claude/skills/k8s-manifest-generator/ │
+  └──────────────────────────────┴───────────────────────────────────────────┘
+
+  ---
+  Everything committed and pushed ✅
+
+  Phase 4 is 100% complete. Nothing missing.
+
+
+
+## How to st
+
+  1. Open Docker Desktop
+  2. Run minikube start
+  3. Open Terminal 1: kubectl port-forward -n todo-app svc/todo-frontend 3000:3000
+  4. Open Terminal 2: kubectl port-forward -n todo-app svc/todo-backend 8000:8000
+  5. Open http://localhost:3000
