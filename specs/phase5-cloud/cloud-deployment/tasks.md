@@ -44,10 +44,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Create `cloud/helm/values-cloud.yaml` — complete cloud overrides per `plan.md` Phase 3: backend (replicaCount 2, ghcr.io image repo, `pullPolicy: Always`, ALLOWED_ORIGINS, KAFKA_BOOTSTRAP_SERVERS, resource limits, liveness/readiness probes); frontend (replicaCount 2, ghcr.io image repo, NEXT_PUBLIC_API_URL, BETTER_AUTH_URL)
+- [ ] T007 [US1] Create `cloud/helm/values-cloud.yaml` — complete cloud overrides per `plan.md` Phase 3: backend (replicaCount 2, ghcr.io image repo, `pullPolicy: Always`, ALLOWED_ORIGINS, KAFKA_BOOTSTRAP_SERVERS, resource limits, liveness/readiness probes); frontend (replicaCount 2, ghcr.io image repo, NEXT_PUBLIC_API_URL, BETTER_AUTH_URL, `dapr.enabled: false`); mcp-server (replicaCount 1, ghcr.io image repo, `pullPolicy: Always`). Replace `<owner>` placeholder with actual GitHub username throughout.
 - [ ] T008 [P] [US1] Create `cloud/helm/values-dapr.yaml` — Dapr building-block overrides for cloud: pubsub brokers `todo-kafka:9092`, statestore `todo-redis-master:6379`, secrets type `kubernetes`
 - [ ] T009 [US1] Add `kafka` and `redis` sections to `cloud/helm/values-cloud.yaml` — kafka: `enabled: true`, `replicaCount: 1`, `kraft.enabled: true`, `persistence.size: 8Gi`; redis: `enabled: true`, `architecture: standalone`, `auth.enabled: false`, `master.persistence.size: 2Gi`
-- [ ] T010 [US1] Add `ingress` section to `cloud/helm/values-cloud.yaml` — `enabled: true`, `className: nginx`, annotation `cert-manager.io/cluster-issuer: letsencrypt-prod`, host `todo.<ip>.nip.io` (placeholder), `tls.enabled: true`, `tls.secretName: todo-tls`, path rules for `/api` → backend:8000 and `/` → frontend:3000
+- [ ] T010 [P] [US1] Create `cloud/k8s/ingress.yaml` — standalone Kubernetes `Ingress` manifest (not Helm template; base charts untouched); `spec.ingressClassName: nginx`; annotation `cert-manager.io/cluster-issuer: letsencrypt-prod`; host `todo.<ip>.nip.io` (replace `<ip>` with actual OKE load-balancer IP); TLS secret `todo-tls`; rules: `/api` → `todo-backend:8000`, `/` → `todo-frontend:3000`. Applied with `kubectl apply -f cloud/k8s/ingress.yaml -n todo-platform`.
 
 **Checkpoint**: `helm upgrade --install todo-platform k8s/helm/todo-platform -f cloud/helm/values-cloud.yaml -f cloud/helm/values-dapr.yaml --dry-run` succeeds ✅
 
@@ -63,7 +63,7 @@
 
 - [ ] T011 [US2] Create `.github/workflows/ci.yml` — three jobs running on `ubuntu-latest`: (1) `build-backend` — `docker/setup-buildx-action`, `docker/login-action` with `GITHUB_TOKEN`, `docker buildx build --platform linux/arm64,linux/amd64 -f backend/Dockerfile --push ghcr.io/${{ github.repository_owner }}/todo-backend:${{ github.sha }}`; (2) `build-frontend` — same pattern for `k8s/Dockerfile.frontend`; (3) `test` — `setup-python 3.13`, `astral-sh/setup-uv`, `cd backend && uv sync && uv run pytest -v --tb=short`; push only on master; PR runs build+test only
 - [ ] T012 [US2] Add `dorny/paths-filter@v3` step to `ci.yml` — filter `backend: backend/**` and `frontend: frontend/**`; gate `build-backend` job on `filter.outputs.backend == 'true'`; gate `build-frontend` on `filter.outputs.frontend == 'true'`; always run `test` job
-- [ ] T013 [US2] Create `.github/workflows/cd.yml` — triggered by `workflow_call` from `ci.yml` on master success; steps: decode `KUBECONFIG_B64` secret to `~/.kube/config`; install Helm; `helm dependency update k8s/helm/todo-platform`; `helm upgrade --install todo-platform k8s/helm/todo-platform --namespace todo-platform --create-namespace -f cloud/helm/values-cloud.yaml -f cloud/helm/values-dapr.yaml --set backend.image.tag=${{ github.sha }} --set frontend.image.tag=${{ github.sha }} --atomic --timeout 5m`
+- [ ] T013 [US2] Create `.github/workflows/cd.yml` — triggered by `workflow_call` from `ci.yml` on master success; steps: decode `KUBECONFIG_B64` secret to `~/.kube/config`; install Helm; `helm dependency update k8s/helm/todo-platform`; `helm upgrade --install todo-platform k8s/helm/todo-platform --namespace todo-platform --create-namespace -f cloud/helm/values-cloud.yaml -f cloud/helm/values-dapr.yaml --set backend.image.tag=${{ github.sha }} --set frontend.image.tag=${{ github.sha }} --atomic --timeout 10m` (10 min covers Kafka cold-start; consistent for all deploys per FR-010)
 - [ ] T014 [US2] Add verify + rollback step to `cd.yml` post-deploy — `kubectl rollout status deployment/todo-backend -n todo-platform --timeout=120s`; `kubectl rollout status deployment/todo-frontend -n todo-platform --timeout=120s`; `curl -f https://todo.<ip>.nip.io/health`; on failure: `helm rollback todo-platform -n todo-platform`
 - [ ] T015 [P] [US2] Create `cloud/CI-CD-SETUP.md` — document required GitHub repository secrets (`KUBECONFIG_B64` — how to generate, `HELM_NAMESPACE` — default `todo-platform`); document OCI KUBECONFIG generation steps; note that `DATABASE_URL` and `BETTER_AUTH_SECRET` are NOT pipeline secrets (they live in K8s secrets)
 
@@ -133,7 +133,7 @@
 
 ```
 Foundational (T003-T006)
-   ├── US1 (T007-T010): Helm values + Kafka/Redis/Ingress
+   ├── US1 (T007-T010): Helm values + Kafka/Redis + standalone Ingress YAML
    │     └── US3 (T016-T022): Monitoring requires live pods
    ├── US2 (T011-T015): CI/CD workflows (independent of US1 Helm files)
    └── US4 (T023-T025): Secret verification (runs anytime after T005)
@@ -143,7 +143,8 @@ Foundational (T003-T006)
 
 - Models before services (N/A — infra-only feature)
 - Config files before apply commands
-- T007 before T009, T010 (all append sections to same file)
+- T007 before T009 (T009 appends kafka/redis sections to same values-cloud.yaml file)
+- T010 is now independent [P] — `cloud/k8s/ingress.yaml` is a separate standalone file
 - T011 before T012 (paths-filter extends ci.yml)
 - T013 before T014 (verify step extends cd.yml)
 - T016 before T017 (dependency before import)
@@ -163,8 +164,9 @@ T006 (create ClusterIssuer)   ← parallel
 
 ### Phase 3: US1 — split Helm values creation
 ```
-T007 (values-cloud.yaml base)   → then T009, T010 (extend same file, sequential)
+T007 (values-cloud.yaml base)   → then T009 (extends same file, sequential)
 T008 (values-dapr.yaml)         ← parallel with T007
+T010 (cloud/k8s/ingress.yaml)   ← parallel with T007/T008/T009 (different file)
 ```
 
 ### Phase 5: US3 monitoring files (all different files)
@@ -212,11 +214,11 @@ With two developers after Foundational is complete:
 |-------|-------|---------------|-------|
 | Phase 1: Setup | T001–T002 | 0 | — |
 | Phase 2: Foundational | T003–T006 | 4 | — |
-| Phase 3: US1 Public Deployment | T007–T010 | 1 (T008) | US1 |
+| Phase 3: US1 Public Deployment | T007–T010 | 2 (T008, T010) | US1 |
 | Phase 4: US2 CI/CD Pipeline | T011–T015 | 1 (T015) | US2 |
 | Phase 5: US3 Monitoring | T016–T022 | 4 (T018-T021) | US3 |
 | Phase 6: US4 Secrets | T023–T025 | 2 (T024, T025) | US4 |
 | Phase 7: Polish | T026–T028 | 2 (T026, T028) | — |
-| **Total** | **28** | **14** | |
+| **Total** | **28** | **15** | |
 
 **Suggested MVP scope**: Phases 1–3 (Tasks T001–T010) → live HTTPS deployment.
