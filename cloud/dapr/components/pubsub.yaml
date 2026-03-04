@@ -8,7 +8,7 @@ spec:
   version: v1
   metadata:
     - name: brokers
-      value: "kafka:9092"
+      value: "todo-platform-kafka:9092"
     - name: authType
       value: "none"
     - name: consumerGroup

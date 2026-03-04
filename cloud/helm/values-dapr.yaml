@@ -1,0 +1,11 @@
+# [Task]: T008 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-005
+# Dapr component in-cluster address overrides for cloud (OKE) environment.
+# Applied alongside values-cloud.yaml: -f cloud/helm/values-dapr.yaml
+
+daprComponents:
+  pubsub:
+    brokers: "todo-platform-kafka:9092"
+  statestore:
+    redisHost: "todo-platform-redis-master:6379"
+  secrets:
+    type: kubernetes

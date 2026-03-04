@@ -1,0 +1,79 @@
+# [Task]: T013/T014 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-009,FR-010
+# CD workflow — deploy to OKE cluster via Helm after CI succeeds on master.
+# Requires GitHub Secrets: KUBECONFIG_B64, HELM_NAMESPACE (default: todo-platform).
+# Uses --atomic --timeout 10m: covers Kafka cold-start; auto-rollbacks on failure.
+
+name: CD
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HELM_NAMESPACE: ${{ secrets.HELM_NAMESPACE || 'todo-platform' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update Helm dependencies (Bitnami Kafka + Redis)
+        run: helm dependency update k8s/helm/todo-platform
+
+      - name: Deploy to OKE
+        run: |
+          helm upgrade --install todo-platform k8s/helm/todo-platform \
+            --namespace "$HELM_NAMESPACE" \
+            --create-namespace \
+            -f cloud/helm/values-cloud.yaml \
+            -f cloud/helm/values-dapr.yaml \
+            --set backend.image.tag="${{ inputs.image_tag }}" \
+            --set frontend.image.tag="${{ inputs.image_tag }}" \
+            --set mcp-server.image.tag="${{ inputs.image_tag }}" \
+            --atomic \
+            --timeout 10m
+
+      - name: Verify backend rollout
+        run: |
+          kubectl rollout status deployment/todo-platform-backend \
+            -n "$HELM_NAMESPACE" --timeout=120s
+
+      - name: Verify frontend rollout
+        run: |
+          kubectl rollout status deployment/todo-platform-frontend \
+            -n "$HELM_NAMESPACE" --timeout=120s
+
+      - name: Health check
+        run: |
+          INGRESS_HOST=$(kubectl get ingress todo-platform-ingress \
+            -n "$HELM_NAMESPACE" \
+            -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || echo "")
+          if [ -n "$INGRESS_HOST" ]; then
+            curl --fail --retry 5 --retry-delay 10 \
+              "https://${INGRESS_HOST}/health" || {
+              echo "Health check failed — rolling back"
+              helm rollback todo-platform -n "$HELM_NAMESPACE"
+              exit 1
+            }
+          else
+            echo "No ingress host found — skipping HTTP health check"
+          fi

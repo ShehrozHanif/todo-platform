@@ -1,0 +1,24 @@
+# [Task]: T019 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-011
+# Prometheus ServiceMonitor — scrapes /metrics from the todo-backend service every 30s.
+# Apply: kubectl apply -f cloud/monitoring/servicemonitor-backend.yaml -n monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: todo-backend
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: todo-platform
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/instance: todo-platform
+  namespaceSelector:
+    matchNames:
+      - todo-platform
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

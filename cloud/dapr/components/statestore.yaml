@@ -1,3 +1,5 @@
+# [Task]: T004 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-005
+# Dapr State Store — Bitnami Redis (standalone, no auth) in-cluster service.
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
@@ -8,14 +10,8 @@ spec:
   version: v1
   metadata:
     - name: redisHost
-      value: "redis-master.todo-platform.svc.cluster.local:6379"
-    - name: redisPassword
-      secretKeyRef:
-        name: redis-secret
-        key: redis-password
+      value: "todo-platform-redis-master:6379"
     - name: enableTLS
       value: "false"
     - name: keyPrefix
       value: "appid"
-  auth:
-    secretStore: kubernetes

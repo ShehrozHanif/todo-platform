@@ -30,7 +30,8 @@
       "Bash(bash:*)",
       "Bash(mkdir:*)",
       "Bash(powershell:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(pwsh:*)"
     ]
   }
 }

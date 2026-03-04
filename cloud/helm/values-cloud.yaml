@@ -1,0 +1,110 @@
+# [Task]: T007/T009 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-001,FR-004
+# Cloud-specific Helm value overrides for OKE deployment.
+# Replace GITHUB_OWNER with your actual GitHub username/org (e.g. ShehrozHanif).
+# Image tags are overridden at deploy time via --set backend.image.tag=$GITHUB_SHA.
+
+backend:
+  replicaCount: 2
+  dapr:
+    enabled: true
+  image:
+    repository: ghcr.io/GITHUB_OWNER/todo-backend
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  env:
+    ALLOWED_ORIGINS: "https://todo.CLUSTER_IP.nip.io"
+    MCP_SERVER_URL: "http://todo-platform-mcp-server:8001/sse"
+    KAFKA_BOOTSTRAP_SERVERS: "todo-platform-kafka:9092"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 15
+      periodSeconds: 30
+    readiness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+
+frontend:
+  replicaCount: 2
+  dapr:
+    enabled: false
+  image:
+    repository: ghcr.io/GITHUB_OWNER/todo-frontend
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  env:
+    NEXT_PUBLIC_APP_URL: "https://todo.CLUSTER_IP.nip.io"
+    BETTER_AUTH_URL: "https://todo.CLUSTER_IP.nip.io"
+    NEXT_PUBLIC_API_URL: "https://todo.CLUSTER_IP.nip.io"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+mcp-server:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/GITHUB_OWNER/todo-mcp
+    tag: "latest"
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Bitnami Kafka (KRaft — no ZooKeeper) — in-cluster event streaming
+kafka:
+  enabled: true
+  replicaCount: 1
+  kraft:
+    enabled: true
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Bitnami Redis (standalone — no auth, internal cluster only)
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
