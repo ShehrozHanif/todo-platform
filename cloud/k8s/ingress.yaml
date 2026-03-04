@@ -1,6 +1,6 @@
 # [Task]: T010 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-002
 # Standalone Kubernetes Ingress manifest — applied separately from Helm release.
-# Replace CLUSTER_IP with the actual OKE NGINX Ingress external IP.
+# Replace 136.116.62.248 with the actual OKE NGINX Ingress external IP.
 # Get IP: kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 # Apply: kubectl apply -f cloud/k8s/ingress.yaml -n todo-platform
 apiVersion: networking.k8s.io/v1
@@ -16,10 +16,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - todo.CLUSTER_IP.nip.io
+        - todo.136.116.62.248.nip.io
       secretName: todo-tls
   rules:
-    - host: todo.CLUSTER_IP.nip.io
+    - host: todo.136.116.62.248.nip.io
       http:
         paths:
           - path: /api
