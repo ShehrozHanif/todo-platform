@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "start the cloud-deployment — Deploy the todo platform to a managed cloud Kubernetes service with CI/CD, monitoring, and a live public URL."
 
+## Clarifications
+
+### Session 2026-03-04
+
+- Q: How should the NGINX Ingress resource be delivered? → A: Standalone `cloud/k8s/ingress.yaml` applied with `kubectl apply` after Helm deploy; existing base charts remain untouched.
+- Q: Should ghcr.io container images be public or private? → A: Public — no `imagePullSecrets` required; K8s pulls images anonymously from ghcr.io.
+- Q: Should the MCP server (Phase 3) be deployed to the cloud cluster? → A: Yes — the `mcp-server` sub-chart is included in the cloud deployment; AI chatbot feature must be accessible at the public URL.
+- Q: What Helm deploy timeout should `cd.yml` use for `--atomic`? → A: 10 minutes for all deploys (covers Kafka cold-start; simpler than conditional logic; within SC-002 pipeline budget).
+- Q: Should frontend pods have a Dapr sidecar? → A: No — Dapr is backend-only. `frontend.dapr.enabled: false`. Saves ~256Mi RAM (2 replicas × 128Mi) on OKE always-free cluster.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Public Live Deployment (Priority: P1)
@@ -88,18 +98,18 @@ A security-conscious admin deploys the platform to the cloud without storing sen
 ### Functional Requirements
 
 **Deployment:**
-- **FR-001**: System MUST deploy all services (frontend, backend, Dapr sidecar) to a managed Kubernetes cluster (AKS, GKE, or OKE) using the existing Helm charts.
-- **FR-002**: System MUST expose the frontend on a public HTTPS endpoint with a stable hostname.
+- **FR-001**: System MUST deploy all services (frontend, backend, MCP server, Dapr sidecar) to a managed Kubernetes cluster (OKE) using the existing Helm charts. The `mcp-server` sub-chart is included so the AI chatbot feature is accessible at the public URL.
+- **FR-002**: System MUST expose the frontend on a public HTTPS endpoint with a stable hostname. Ingress is delivered via a standalone `cloud/k8s/ingress.yaml` manifest (applied with `kubectl apply` after Helm deploy); the existing base Helm charts are not modified for this purpose.
 - **FR-003**: System MUST use the existing Neon PostgreSQL database (no cloud DB provisioning required — Neon handles hosting).
 - **FR-004**: System MUST deploy Kafka (or use a managed Kafka service) to support event streaming in the cloud environment.
-- **FR-005**: System MUST run Dapr sidecar alongside backend pods with all 5 building blocks active (pub/sub, state, jobs, secrets, service invocation).
+- **FR-005**: System MUST run Dapr sidecar alongside **backend pods only** with all 5 building blocks active (pub/sub, state, jobs, secrets, service invocation). Frontend pods do NOT use Dapr (`frontend.dapr.enabled: false`).
 
 **CI/CD Pipeline:**
 - **FR-006**: System MUST automatically trigger a pipeline on every push to the `master` branch.
-- **FR-007**: Pipeline MUST build and push Docker images for frontend and backend to a container registry.
+- **FR-007**: Pipeline MUST build and push Docker images for frontend and backend to `ghcr.io` as **public** packages (no `imagePullSecrets` required; K8s pulls anonymously). Images are tagged with `GITHUB_SHA` (immutable) and `latest` (floating).
 - **FR-008**: Pipeline MUST run the full backend test suite (138+ tests) and halt deployment on any failure.
 - **FR-009**: Pipeline MUST deploy to the cloud cluster using a rolling update strategy.
-- **FR-010**: Pipeline MUST roll back automatically if the new deployment fails its health checks within a configurable timeout.
+- **FR-010**: Pipeline MUST roll back automatically if the new deployment fails its health checks. The `helm upgrade --atomic` timeout is **10 minutes** for all deploys (covers Kafka cold-start on first deploy; subsequent deploys also use 10 min for consistency).
 
 **Monitoring:**
 - **FR-011**: System MUST collect CPU, memory, and HTTP request metrics from all pods.
@@ -139,7 +149,7 @@ A security-conscious admin deploys the platform to the cloud without storing sen
 - Kafka will be deployed as an in-cluster service (via Bitnami Helm chart) for the cloud environment; managed Kafka (Confluent Cloud, Azure Event Hubs) is out of scope for this iteration.
 - Dapr is installed in the cluster via the Dapr Helm chart before deploying application services.
 - TLS certificates are provisioned via cert-manager + Let's Encrypt (or cloud-provider-managed TLS) — no manual certificate management.
-- The existing Helm charts (k8s/helm/todo-platform/) are the primary deployment vehicle and will be extended, not replaced.
+- The existing Helm charts (k8s/helm/todo-platform/) are the primary deployment vehicle. The Helm umbrella chart is extended only via Bitnami sub-chart dependencies (Kafka, Redis) added to `Chart.yaml`. Ingress is NOT added as a Helm template — it is delivered as a standalone `cloud/k8s/ingress.yaml` manifest applied separately.
 - Monitoring uses open-source tooling (Prometheus + Grafana or cloud-provider equivalents); paid SaaS monitoring is out of scope.
 
 ## Out of Scope
