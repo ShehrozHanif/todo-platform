@@ -1,11 +1,12 @@
-# [Task]: T003/T011 [From]: specs/phase2-web/rest-api/spec.md §FR-008
-# FastAPI application with CORS, lifespan, and task routes.
+# [Task]: T003/T011/T017 [From]: specs/phase2-web/rest-api/spec.md §FR-008, specs/phase5-cloud/cloud-deployment/spec.md §FR-011
+# FastAPI application with CORS, lifespan, task routes, and Prometheus metrics.
 
 import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from db import lifespan
 from routes.tasks import router as tasks_router
@@ -51,3 +52,6 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+# [Task]: T017 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-011
+# Expose /metrics endpoint for Prometheus scraping (kube-prometheus-stack ServiceMonitor).
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")

@@ -1,0 +1,62 @@
+# [Task]: T020 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-013
+# PrometheusRule — alert rules for todo-backend health monitoring.
+# Apply: kubectl apply -f cloud/monitoring/alerts/backend-errors.yaml -n monitoring
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: todo-backend-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/instance: todo-platform
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: todo-backend
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            (
+              rate(http_requests_total{status=~"5..",job="todo-platform-backend"}[5m])
+              /
+              rate(http_requests_total{job="todo-platform-backend"}[5m])
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Backend HTTP 5xx error rate > 5%"
+            description: "Error rate is {{ humanizePercentage $value }} over the last 5 minutes."
+            runbook_url: "https://github.com/ShehrozHanif/todo-platform/blob/master/cloud/DEPLOY.md#runbook-high-error-rate"
+
+        - alert: PodCrashLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="todo-platform",
+              pod=~"todo-platform-backend-.*"
+            }[10m]) > 2
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Backend pod is crash-looping"
+            description: "Pod {{ $labels.pod }} restarted {{ $value }} times in 10 minutes."
+            runbook_url: "https://github.com/ShehrozHanif/todo-platform/blob/master/cloud/DEPLOY.md#runbook-pod-crash-loop"
+
+        - alert: ServiceDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="todo-platform",
+              deployment="todo-platform-backend"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Backend service has no available replicas"
+            description: "All todo-backend pods are down. Service is completely unavailable."
+            runbook_url: "https://github.com/ShehrozHanif/todo-platform/blob/master/cloud/DEPLOY.md#runbook-service-down"

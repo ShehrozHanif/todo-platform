@@ -1,0 +1,47 @@
+# [Task]: T018 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-011,FR-012,FR-013
+# kube-prometheus-stack Helm values for OKE cloud deployment.
+# Install: helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#   -n monitoring --create-namespace -f cloud/monitoring/values-prometheus.yaml --wait
+
+grafana:
+  enabled: true
+  adminPassword: "changeme-set-via-kubectl-secret"
+  persistence:
+    enabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+
+prometheus:
+  prometheusSpec:
+    # Allow ServiceMonitors from any namespace (not just monitoring ns)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    retention: 7d
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# Reduce resource footprint for OKE always-free tier
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
