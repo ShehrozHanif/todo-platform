@@ -53,6 +53,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           BETTER_AUTH_SECRET: "ci-test-secret-32-chars-minimum!!"
+          OPENAI_API_KEY: "sk-test-placeholder-not-real"
         run: uv run pytest -v --tb=short --no-cov
 
   build-backend:
