@@ -37,7 +37,14 @@ from chatkit.types import (
 MCP_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8001/sse")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-_openai_client = openai.AsyncOpenAI()
+_openai_client: openai.AsyncOpenAI | None = None
+
+
+def _get_openai_client() -> openai.AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = openai.AsyncOpenAI()
+    return _openai_client
 
 
 def _now() -> datetime:
@@ -215,7 +222,7 @@ async def _extract_task_extras(user_message: str) -> dict:
         # compute tomorrow
         from datetime import timedelta
         tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
-        result = await _openai_client.chat.completions.create(
+        result = await _get_openai_client().chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": _EXTRACT_PROMPT.format(
                 message=user_message[:300],
@@ -259,7 +266,7 @@ Assistant response:
 async def _generate_suggestions(response_text: str) -> list[str]:
     """Call a fast model to generate contextual suggestion chips."""
     try:
-        result = await _openai_client.chat.completions.create(
+        result = await _get_openai_client().chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": _SUGGEST_PROMPT.format(
                 response_text=response_text[:500],
@@ -439,7 +446,7 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
         ext_map = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a"}
         ext = ext_map.get(audio_input.media_type, "webm")
 
-        transcript = await _openai_client.audio.transcriptions.create(
+        transcript = await _get_openai_client().audio.transcriptions.create(
             model="whisper-1",
             file=(f"audio.{ext}", audio_input.data, audio_input.mime_type),
         )
