@@ -1,7 +1,7 @@
 # [Task]: T013/T014 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-009,FR-010
 # CD workflow — deploy to GKE cluster via Helm after CI succeeds on master.
-# Requires GitHub Secrets: GCP_SA_KEY, GCP_PROJECT_ID, GKE_CLUSTER, GKE_ZONE
-# Uses --atomic --timeout 10m: covers Kafka cold-start; auto-rollbacks on failure.
+# Requires GitHub Secrets: GCP_SA_KEY, GCP_PROJECT_ID, GKE_CLUSTER, GKE_ZONE,
+#   DATABASE_URL, FRONTEND_DATABASE_URL, BETTER_AUTH_SECRET, OPENAI_API_KEY
 
 name: CD
 
@@ -52,6 +52,12 @@ jobs:
             --set backend.image.tag="${{ inputs.image_tag }}" \
             --set frontend.image.tag="${{ inputs.image_tag }}" \
             --set mcp-server.image.tag="${{ inputs.image_tag }}" \
+            --set backend.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            --set backend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
+            --set backend.secrets.OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --set frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
+            --set frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
+            --set mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
             --atomic \
             --timeout 10m
 
