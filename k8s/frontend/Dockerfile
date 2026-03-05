@@ -7,7 +7,7 @@ FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # Stage 2: Builder — build the Next.js app
 FROM node:22-alpine AS builder
