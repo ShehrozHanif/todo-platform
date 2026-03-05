@@ -49,7 +49,6 @@ jobs:
             --namespace "$HELM_NAMESPACE" \
             --create-namespace \
             -f cloud/helm/values-cloud.yaml \
-            -f cloud/helm/values-dapr.yaml \
             --set backend.image.tag="${{ inputs.image_tag }}" \
             --set frontend.image.tag="${{ inputs.image_tag }}" \
             --set mcp-server.image.tag="${{ inputs.image_tag }}" \
