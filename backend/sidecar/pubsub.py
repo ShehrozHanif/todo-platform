@@ -23,7 +23,10 @@ def _publish_sync(
     """
     Thread-safe synchronous Dapr publish. Runs in FastAPI's thread pool via
     BackgroundTasks.add_task(). Never raises — fire-and-forget semantics.
+    Skipped entirely when DAPR_ENABLED != "true".
     """
+    if os.getenv("DAPR_ENABLED", "false").lower() != "true":
+        return
     try:
         with DaprClient() as client:
             client.publish_event(

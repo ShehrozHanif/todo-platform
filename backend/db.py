@@ -112,9 +112,11 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     # Phase 5 (Dapr US4): load secrets from Dapr sidecar, inject into os.environ.
     # Fail-open: if sidecar unavailable, python-dotenv .env values are used instead.
     # Fail-fast: get_engine() raises ValueError if DATABASE_URL still missing.
-    from sidecar.secrets import inject_secrets, load_secrets_from_dapr
-    secrets = await asyncio.to_thread(load_secrets_from_dapr)
-    inject_secrets(secrets)
+    # Only attempt Dapr secrets when DAPR_ENABLED=true (sidecar present).
+    if os.getenv("DAPR_ENABLED", "false").lower() == "true":
+        from sidecar.secrets import inject_secrets, load_secrets_from_dapr
+        secrets = await asyncio.to_thread(load_secrets_from_dapr)
+        inject_secrets(secrets)
 
     from models import Task, Conversation, Message  # noqa: F401
 
@@ -142,14 +144,15 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
             _log.warning("Kafka setup failed — events disabled: %s", exc)
 
     # Phase 5 (Dapr US2): register reminder-scan job with Dapr Jobs API.
-    # Fail-open: if sidecar unavailable, scheduler simply won't run.
-    try:
-        from sidecar.jobs import register_reminder_job
-        await register_reminder_job()
-    except ImportError:
-        pass  # sidecar.jobs not yet available — will be created in T015
-    except Exception as exc:
-        _log.warning("Dapr job registration failed: %s", exc)
+    # Only attempt when DAPR_ENABLED=true (sidecar present).
+    if os.getenv("DAPR_ENABLED", "false").lower() == "true":
+        try:
+            from sidecar.jobs import register_reminder_job
+            await register_reminder_job()
+        except ImportError:
+            pass  # sidecar.jobs not yet available — will be created in T015
+        except Exception as exc:
+            _log.warning("Dapr job registration failed: %s", exc)
 
     yield
 

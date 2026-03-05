@@ -5,6 +5,7 @@
 
 import json
 import logging
+import os
 from typing import Any
 
 from dapr.clients import DaprClient
@@ -22,7 +23,10 @@ def get_cached_tasks_sync(user_id: str) -> list[dict[str, Any]] | None:
     """
     Retrieve cached task list from Dapr State Store.
     Returns None on cache miss or any error (fail-open).
+    Skipped entirely when DAPR_ENABLED != "true".
     """
+    if os.getenv("DAPR_ENABLED", "false").lower() != "true":
+        return None
     key = _cache_key(user_id)
     try:
         with DaprClient() as client:
@@ -39,7 +43,10 @@ def set_cached_tasks_sync(user_id: str, tasks: list[dict[str, Any]]) -> None:
     """
     Store task list in Dapr State Store with 5-minute TTL.
     Fail-open: any exception is logged and swallowed.
+    Skipped entirely when DAPR_ENABLED != "true".
     """
+    if os.getenv("DAPR_ENABLED", "false").lower() != "true":
+        return
     key = _cache_key(user_id)
     try:
         with DaprClient() as client:
@@ -57,7 +64,10 @@ def invalidate_cache_sync(user_id: str) -> None:
     """
     Delete cached task list for a user after any write operation.
     Fail-open: any exception is logged and swallowed.
+    Skipped entirely when DAPR_ENABLED != "true".
     """
+    if os.getenv("DAPR_ENABLED", "false").lower() != "true":
+        return
     key = _cache_key(user_id)
     try:
         with DaprClient() as client:
