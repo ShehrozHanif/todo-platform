@@ -31,9 +31,11 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          echo "${KUBECONFIG_B64}" | tr -d '\n' | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
 
       - name: Update Helm dependencies (Bitnami Kafka + Redis)
