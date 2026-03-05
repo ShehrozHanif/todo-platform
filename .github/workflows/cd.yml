@@ -58,8 +58,8 @@ jobs:
             --set frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
             --set frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --atomic \
-            --timeout 10m
+            --timeout 5m \
+            --wait
 
       - name: Verify backend rollout
         run: |

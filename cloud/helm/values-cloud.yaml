@@ -74,27 +74,13 @@ mcp-server:
       cpu: 500m
       memory: 256Mi
 
-# Bitnami Kafka (KRaft — no ZooKeeper) — in-cluster event streaming
+# Bitnami Kafka — disabled for initial deploy (enable later)
 kafka:
-  enabled: true
-  controller:
-    replicaCount: 1
-    persistence:
-      enabled: true
-      size: 8Gi
-    resources:
-      requests:
-        cpu: 200m
-        memory: 512Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
-  kraft:
-    enabled: true
+  enabled: false
 
-# Bitnami Redis (standalone — no auth, internal cluster only)
+# Bitnami Redis — disabled for initial deploy (enable later)
 redis:
-  enabled: true
+  enabled: false
   architecture: standalone
   auth:
     enabled: false
