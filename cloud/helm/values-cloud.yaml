@@ -61,7 +61,7 @@ frontend:
       memory: 256Mi
 
 mcp-server:
-  replicaCount: 1
+  replicaCount: 0
   image:
     repository: ghcr.io/shehrozhanif/todo-mcp
     tag: "latest"
