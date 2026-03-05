@@ -1,6 +1,6 @@
 # [Task]: T007/T009 [From]: specs/phase5-cloud/cloud-deployment/spec.md §FR-001,FR-004
 # Cloud-specific Helm value overrides for OKE deployment.
-# Replace GITHUB_OWNER with your actual GitHub username/org (e.g. ShehrozHanif).
+# Replace GITHUB_OWNER with your actual GitHub username/org (e.g. shehrozhanif).
 # Image tags are overridden at deploy time via --set backend.image.tag=$GITHUB_SHA.
 
 backend:
@@ -8,7 +8,7 @@ backend:
   dapr:
     enabled: true
   image:
-    repository: ghcr.io/ShehrozHanif/todo-backend
+    repository: ghcr.io/shehrozhanif/todo-backend
     tag: "latest"
     pullPolicy: Always
   service:
@@ -41,7 +41,7 @@ frontend:
   dapr:
     enabled: false
   image:
-    repository: ghcr.io/ShehrozHanif/todo-frontend
+    repository: ghcr.io/shehrozhanif/todo-frontend
     tag: "latest"
     pullPolicy: Always
   service:
@@ -63,7 +63,7 @@ frontend:
 mcp-server:
   replicaCount: 1
   image:
-    repository: ghcr.io/ShehrozHanif/todo-mcp
+    repository: ghcr.io/shehrozhanif/todo-mcp
     tag: "latest"
     pullPolicy: Always
   resources:

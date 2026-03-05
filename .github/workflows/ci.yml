@@ -47,12 +47,14 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - name: Install dependencies
         working-directory: backend
-        run: uv sync
+        run: uv sync --all-groups
       - name: Run tests
         working-directory: backend
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-        run: uv run pytest -v --tb=short
+          BETTER_AUTH_SECRET: "ci-test-secret-32-chars-minimum!!"
+          OPENAI_API_KEY: "sk-test-placeholder-not-real"
+        run: uv run pytest -v --tb=short --no-cov
 
   build-backend:
     runs-on: ubuntu-latest
@@ -61,6 +63,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Set lowercase owner
+        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -74,8 +78,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/todo-backend:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/todo-backend:latest
+            ghcr.io/${{ env.OWNER }}/todo-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/todo-backend:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -87,6 +91,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Set lowercase owner
+        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -100,8 +106,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/todo-frontend:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/todo-frontend:latest
+            ghcr.io/${{ env.OWNER }}/todo-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/todo-frontend:latest
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
