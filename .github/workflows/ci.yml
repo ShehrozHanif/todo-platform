@@ -74,7 +74,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: backend
-          file: backend/Dockerfile
+          file: k8s/backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
@@ -102,7 +102,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: frontend
-          file: k8s/Dockerfile.frontend
+          file: k8s/frontend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
           tags: |
