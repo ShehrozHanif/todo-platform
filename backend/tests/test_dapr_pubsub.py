@@ -33,6 +33,7 @@ def _make_task(**kwargs) -> _Task:
 # _publish_sync()
 # ---------------------------------------------------------------------------
 
+@patch.dict("os.environ", {"DAPR_ENABLED": "true"})
 class TestPublishSync:
     def test_calls_dapr_publish_event(self):
         """_publish_sync calls DaprClient.publish_event with correct args."""

@@ -29,6 +29,7 @@ def _mock_dapr(data: bytes = b"") -> MagicMock:
 # get_cached_tasks_sync()
 # ---------------------------------------------------------------------------
 
+@patch.dict("os.environ", {"DAPR_ENABLED": "true"})
 class TestGetCachedTasksSync:
     def test_cache_hit_returns_deserialized_list(self):
         """Cache hit → deserializes JSON bytes and returns list of dicts."""
@@ -91,6 +92,7 @@ class TestGetCachedTasksSync:
 # set_cached_tasks_sync()
 # ---------------------------------------------------------------------------
 
+@patch.dict("os.environ", {"DAPR_ENABLED": "true"})
 class TestSetCachedTasksSync:
     def test_calls_save_state_with_correct_store_and_key(self):
         """save_state called with store='statestore' and key='tasks:{user_id}'."""
@@ -145,6 +147,7 @@ class TestSetCachedTasksSync:
 # invalidate_cache_sync()
 # ---------------------------------------------------------------------------
 
+@patch.dict("os.environ", {"DAPR_ENABLED": "true"})
 class TestInvalidateCacheSync:
     def test_calls_delete_state_with_correct_store_and_key(self):
         """delete_state called with store='statestore', key='tasks:{user_id}'."""
