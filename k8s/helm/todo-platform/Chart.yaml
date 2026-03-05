@@ -17,10 +17,10 @@ dependencies:
     version: 0.1.0
     repository: "file://charts/mcp-server"
   - name: kafka
-    version: "~28.0"
+    version: "~32.0"
     repository: "https://charts.bitnami.com/bitnami"
     condition: kafka.enabled
   - name: redis
-    version: "~19.0"
+    version: "~21.0"
     repository: "https://charts.bitnami.com/bitnami"
     condition: redis.enabled
