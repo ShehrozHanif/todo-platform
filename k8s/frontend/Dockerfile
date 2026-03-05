@@ -21,6 +21,11 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
+# Dummy server-side vars so Better Auth does not crash during static analysis
+ENV BETTER_AUTH_SECRET=build-time-placeholder-secret-32ch
+ENV BETTER_AUTH_URL=http://localhost:3000
+ENV DATABASE_URL=postgresql://user:pass@localhost/db
+
 RUN npm run build
 
 # Stage 3: Runner — minimal production image
