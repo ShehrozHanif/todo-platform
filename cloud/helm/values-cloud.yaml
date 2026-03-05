@@ -4,9 +4,9 @@
 # Image tags are overridden at deploy time via --set backend.image.tag=$GITHUB_SHA.
 
 backend:
-  replicaCount: 2
+  replicaCount: 1
   dapr:
-    enabled: true
+    enabled: false
   image:
     repository: ghcr.io/shehrozhanif/todo-backend
     tag: "latest"
@@ -37,7 +37,7 @@ backend:
       periodSeconds: 10
 
 frontend:
-  replicaCount: 2
+  replicaCount: 1
   dapr:
     enabled: false
   image:
@@ -77,19 +77,20 @@ mcp-server:
 # Bitnami Kafka (KRaft — no ZooKeeper) — in-cluster event streaming
 kafka:
   enabled: true
-  replicaCount: 1
+  controller:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
   kraft:
     enabled: true
-  persistence:
-    enabled: true
-    size: 8Gi
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
 
 # Bitnami Redis (standalone — no auth, internal cluster only)
 redis:
