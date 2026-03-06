@@ -36,6 +36,13 @@ spec:
                 name: todo-platform-backend
                 port:
                   number: 8000
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: todo-platform-frontend
+                port:
+                  number: 3000
           - path: /api
             pathType: Prefix
             backend:
