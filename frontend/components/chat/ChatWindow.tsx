@@ -155,7 +155,7 @@ function ChatKitWithBonuses({ onFail }: { onFail: () => void }) {
         try {
           await Promise.race([
             customElements.whenDefined('openai-chatkit'),
-            new Promise((_, rej) => setTimeout(() => rej('timeout'), 8000)),
+            new Promise((_, rej) => setTimeout(() => rej('timeout'), 15000)),
           ]);
         } catch {
           onFail();
@@ -622,15 +622,10 @@ function FallbackChat() {
 // Main export — ChatKit on Vercel, FallbackChat on localhost
 // ---------------------------------------------------------------------------
 export function ChatWindow() {
-  // ChatKit requires a registered domain with OpenAI — use FallbackChat
-  // on nip.io / IP-based domains. Only try ChatKit on known prod domains.
-  const isChatkitDomain = typeof window !== 'undefined' &&
-    !window.location.hostname.includes('nip.io') &&
-    !window.location.hostname.match(/^\d/) &&
-    window.location.hostname !== 'localhost' &&
-    window.location.hostname !== '127.0.0.1';
+  const isLocalhost = typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-  const [mode, setMode] = useState<'chatkit' | 'fallback'>(isChatkitDomain ? 'chatkit' : 'fallback');
+  const [mode, setMode] = useState<'chatkit' | 'fallback'>(isLocalhost ? 'fallback' : 'chatkit');
 
   const handleFail = useCallback(() => {
     console.warn('[ChatKit] Falling back to custom chat UI');
