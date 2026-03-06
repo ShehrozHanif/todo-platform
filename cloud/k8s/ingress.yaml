@@ -43,6 +43,13 @@ spec:
                 name: todo-platform-frontend
                 port:
                   number: 3000
+          - path: /api/token
+            pathType: Exact
+            backend:
+              service:
+                name: todo-platform-frontend
+                port:
+                  number: 3000
           - path: /api
             pathType: Prefix
             backend:
