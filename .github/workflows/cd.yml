@@ -68,6 +68,9 @@ jobs:
             --timeout 8m \
             --wait
 
+      - name: Apply Ingress
+        run: kubectl apply -f cloud/k8s/ingress.yaml -n "$HELM_NAMESPACE"
+
       - name: Diagnose on failure
         if: failure()
         run: |

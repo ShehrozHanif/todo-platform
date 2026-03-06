@@ -22,6 +22,20 @@ spec:
     - host: todo.136.116.62.248.nip.io
       http:
         paths:
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: todo-platform-backend
+                port:
+                  number: 8000
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: todo-platform-backend
+                port:
+                  number: 8000
           - path: /api
             pathType: Prefix
             backend:
