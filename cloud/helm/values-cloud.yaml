@@ -16,7 +16,7 @@ backend:
     port: 8000
     targetPort: 8000
   env:
-    ALLOWED_ORIGINS: "https://todo.136.116.62.248.nip.io"
+    ALLOWED_ORIGINS: "http://todo.136.116.62.248.nip.io,https://todo.136.116.62.248.nip.io"
     MCP_SERVER_URL: "http://todo-platform-mcp-server:8001/sse"
     KAFKA_BOOTSTRAP_SERVERS: "todo-platform-kafka:9092"
   resources:
@@ -49,9 +49,9 @@ frontend:
     port: 3000
     targetPort: 3000
   env:
-    NEXT_PUBLIC_APP_URL: "https://todo.136.116.62.248.nip.io"
-    BETTER_AUTH_URL: "https://todo.136.116.62.248.nip.io"
-    NEXT_PUBLIC_API_URL: "https://todo.136.116.62.248.nip.io"
+    NEXT_PUBLIC_APP_URL: "http://todo.136.116.62.248.nip.io"
+    BETTER_AUTH_URL: "http://todo.136.116.62.248.nip.io"
+    NEXT_PUBLIC_API_URL: "http://todo.136.116.62.248.nip.io"
   resources:
     requests:
       cpu: 100m
