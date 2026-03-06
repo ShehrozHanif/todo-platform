@@ -49,9 +49,9 @@ frontend:
     port: 3000
     targetPort: 3000
   env:
-    NEXT_PUBLIC_APP_URL: "http://todo.136.116.62.248.nip.io"
-    BETTER_AUTH_URL: "http://todo.136.116.62.248.nip.io"
-    NEXT_PUBLIC_API_URL: "http://todo.136.116.62.248.nip.io"
+    NEXT_PUBLIC_APP_URL: "https://todo.136.116.62.248.nip.io"
+    BETTER_AUTH_URL: "https://todo.136.116.62.248.nip.io"
+    NEXT_PUBLIC_API_URL: "https://todo.136.116.62.248.nip.io"
   resources:
     requests:
       cpu: 100m
