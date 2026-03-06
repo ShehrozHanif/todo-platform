@@ -4,16 +4,17 @@
 # Bonus features: voice transcription (Whisper), thread history, smart suggestions, multi-language.
 
 import json
+import logging
 import os
 import re
+import traceback
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import openai
-from agents import Agent, Runner, RunItemStreamEvent
+from agents import Agent, Runner, RunItemStreamEvent, function_tool
 from agents.items import ToolCallOutputItem
-from agents.mcp import MCPServerSse
 from chatkit.agents import stream_agent_response, simple_to_agent_input, AgentContext
 from chatkit.server import (
     AudioInput,
@@ -33,8 +34,15 @@ from chatkit.types import (
     ThreadMetadata,
     UserMessageItem,
 )
+from sqlmodel import select
 
-MCP_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8001/sse")
+from db import get_engine
+from models import Task
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger("chatkit-server")
+
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 _openai_client: openai.AsyncOpenAI | None = None
@@ -49,6 +57,225 @@ def _get_openai_client() -> openai.AsyncOpenAI:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# Direct DB tools — replaces MCP server dependency
+# ---------------------------------------------------------------------------
+def _task_to_dict(task: Task) -> dict:
+    """Convert a Task model to a JSON-serializable dict."""
+    tags = None
+    if task.tags:
+        try:
+            tags = json.loads(task.tags)
+        except (json.JSONDecodeError, TypeError):
+            tags = None
+    return {
+        "id": task.id,
+        "user_id": task.user_id,
+        "title": task.title,
+        "description": task.description,
+        "completed": task.completed,
+        "priority": task.priority,
+        "category": task.category,
+        "tags": tags,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "due_time": task.due_time,
+        "recurring": task.recurring,
+        "reminder": task.reminder,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+    }
+
+
+async def _get_db_session() -> AsyncSession:
+    engine = get_engine()
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return async_session()
+
+
+@function_tool
+async def add_task(
+    user_id: str,
+    title: str,
+    description: Optional[str] = None,
+    priority: Optional[str] = None,
+    category: Optional[str] = None,
+    due_date: Optional[str] = None,
+    due_time: Optional[str] = None,
+    recurring: Optional[str] = None,
+) -> str:
+    """Create a new task for a user. Returns the created task as JSON.
+    priority: high/medium/low. recurring: daily/weekly/monthly.
+    due_date: ISO format (YYYY-MM-DD). due_time: HH:MM format."""
+    logger.info(f"add_task called: user_id={user_id}, title={title}")
+    try:
+        if not title or not title.strip():
+            return json.dumps({"error": "Title is required"})
+
+        from datetime import date as date_type
+        parsed_due_date = None
+        if due_date:
+            try:
+                parsed_due_date = date_type.fromisoformat(due_date)
+            except ValueError:
+                return json.dumps({"error": "due_date must be in YYYY-MM-DD format"})
+
+        session = await _get_db_session()
+        try:
+            task = Task(
+                user_id=user_id,
+                title=title.strip(),
+                description=description.strip() if description else None,
+                priority=priority,
+                category=category,
+                due_date=parsed_due_date,
+                due_time=due_time,
+                recurring=recurring,
+            )
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+            logger.info(f"add_task: Created task id={task.id}")
+            return json.dumps(_task_to_dict(task))
+        finally:
+            await session.close()
+    except Exception as e:
+        logger.error(f"add_task error: {traceback.format_exc()}")
+        return json.dumps({"error": f"Failed to add task: {str(e)}"})
+
+
+@function_tool
+async def list_tasks(user_id: str) -> str:
+    """Get all tasks for a user. Returns a JSON array of tasks."""
+    logger.info(f"list_tasks called: user_id={user_id}")
+    try:
+        session = await _get_db_session()
+        try:
+            statement = select(Task).where(Task.user_id == user_id).order_by(Task.created_at.desc())
+            result = await session.execute(statement)
+            tasks = result.scalars().all()
+            logger.info(f"list_tasks: Found {len(tasks)} tasks")
+            return json.dumps([_task_to_dict(t) for t in tasks])
+        finally:
+            await session.close()
+    except Exception as e:
+        logger.error(f"list_tasks error: {traceback.format_exc()}")
+        return json.dumps({"error": f"Failed to list tasks: {str(e)}"})
+
+
+@function_tool
+async def complete_task(user_id: str, task_id: int) -> str:
+    """Toggle a task's completed status. Returns the updated task as JSON."""
+    logger.info(f"complete_task called: user_id={user_id}, task_id={task_id}")
+    try:
+        session = await _get_db_session()
+        try:
+            statement = select(Task).where(Task.id == task_id, Task.user_id == user_id)
+            result = await session.execute(statement)
+            task = result.scalars().first()
+            if not task:
+                return json.dumps({"error": "Task not found"})
+
+            task.completed = not task.completed
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+            logger.info(f"complete_task: Task {task_id} completed={task.completed}")
+            return json.dumps(_task_to_dict(task))
+        finally:
+            await session.close()
+    except Exception as e:
+        logger.error(f"complete_task error: {traceback.format_exc()}")
+        return json.dumps({"error": f"Failed to complete task: {str(e)}"})
+
+
+@function_tool
+async def delete_task(user_id: str, task_id: int) -> str:
+    """Delete a task. Returns a confirmation message."""
+    logger.info(f"delete_task called: user_id={user_id}, task_id={task_id}")
+    try:
+        session = await _get_db_session()
+        try:
+            statement = select(Task).where(Task.id == task_id, Task.user_id == user_id)
+            result = await session.execute(statement)
+            task = result.scalars().first()
+            if not task:
+                return json.dumps({"error": "Task not found"})
+
+            await session.delete(task)
+            await session.commit()
+            logger.info(f"delete_task: Deleted task {task_id}")
+            return json.dumps({"message": "Task deleted successfully"})
+        finally:
+            await session.close()
+    except Exception as e:
+        logger.error(f"delete_task error: {traceback.format_exc()}")
+        return json.dumps({"error": f"Failed to delete task: {str(e)}"})
+
+
+@function_tool
+async def update_task(
+    user_id: str,
+    task_id: int,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    priority: Optional[str] = None,
+    category: Optional[str] = None,
+    due_date: Optional[str] = None,
+    due_time: Optional[str] = None,
+    recurring: Optional[str] = None,
+) -> str:
+    """Update a task's fields. Returns the updated task as JSON.
+    priority: high/medium/low. recurring: daily/weekly/monthly.
+    due_date: ISO format (YYYY-MM-DD). due_time: HH:MM format."""
+    logger.info(f"update_task called: user_id={user_id}, task_id={task_id}")
+    try:
+        from datetime import date as date_type
+        parsed_due_date = None
+        if due_date:
+            try:
+                parsed_due_date = date_type.fromisoformat(due_date)
+            except ValueError:
+                return json.dumps({"error": "due_date must be in YYYY-MM-DD format"})
+
+        session = await _get_db_session()
+        try:
+            statement = select(Task).where(Task.id == task_id, Task.user_id == user_id)
+            result = await session.execute(statement)
+            task = result.scalars().first()
+            if not task:
+                return json.dumps({"error": "Task not found"})
+
+            if title is not None:
+                task.title = title.strip()
+            if description is not None:
+                task.description = description.strip() if description else None
+            if priority is not None:
+                task.priority = priority
+            if category is not None:
+                task.category = category
+            if due_date is not None:
+                task.due_date = parsed_due_date
+            if due_time is not None:
+                task.due_time = due_time
+            if recurring is not None:
+                task.recurring = recurring
+
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+            logger.info(f"update_task: Updated task {task_id}")
+            return json.dumps(_task_to_dict(task))
+        finally:
+            await session.close()
+    except Exception as e:
+        logger.error(f"update_task error: {traceback.format_exc()}")
+        return json.dumps({"error": f"Failed to update task: {str(e)}"})
+
+
+# All direct DB tools for the agent
+_TOOLS = [add_task, list_tasks, complete_task, delete_task, update_task]
 
 
 # ---------------------------------------------------------------------------
@@ -473,70 +700,58 @@ class TaskFlowChatKitServer(ChatKitServer[dict]):
         # Determine user_id from context (passed from the request handler)
         user_id = context.get("user_id", "unknown")
 
-        # Connect to MCP and run the agent
-        async with MCPServerSse(
-            name="todo-mcp",
-            params={"url": MCP_URL},
-            cache_tools_list=True,
-        ) as mcp_server:
-            agent = Agent(
-                name="TaskFlow Assistant",
-                instructions=SYSTEM_PROMPT.format(user_id=user_id),
-                model=MODEL,
-                mcp_servers=[mcp_server],
-            )
+        # Use direct DB tools instead of MCP server
+        agent = Agent(
+            name="TaskFlow Assistant",
+            instructions=SYSTEM_PROMPT.format(user_id=user_id),
+            model=MODEL,
+            tools=_TOOLS,
+        )
 
-            input_items = await simple_to_agent_input(items_page.data)
-            agent_context = AgentContext(
-                thread=thread, store=self.store, request_context=context,
-            )
+        input_items = await simple_to_agent_input(items_page.data)
+        agent_context = AgentContext(
+            thread=thread, store=self.store, request_context=context,
+        )
 
-            # Capture the user's message text for extras extraction
-            user_text = ""
-            if input_user_message and input_user_message.content:
-                for part in input_user_message.content:
-                    if hasattr(part, "text") and part.text:
-                        user_text += part.text
+        # Capture the user's message text for extras extraction
+        user_text = ""
+        if input_user_message and input_user_message.content:
+            for part in input_user_message.content:
+                if hasattr(part, "text") and part.text:
+                    user_text += part.text
 
-            result = Runner.run_streamed(agent, input_items, context=agent_context)
-            async for event in stream_agent_response(agent_context, result):
-                yield event
+        result = Runner.run_streamed(agent, input_items, context=agent_context)
+        async for event in stream_agent_response(agent_context, result):
+            yield event
 
-            # Path A Step 1: detect add_task result, extract extras, store for polling
-            # NOTE: ToolCallOutputItem.raw_item does NOT have a 'name' attr —
-            # the tool name is on ToolCallItem. Instead, detect any tool output
-            # whose JSON contains both 'id' and 'title' (signature of add_task).
-            try:
-                new_task_id: int | None = None
-                for item in result.new_items:
-                    if not isinstance(item, ToolCallOutputItem):
-                        continue
-                    output_text = str(getattr(item, "output", ""))
-                    if not output_text:
-                        continue
-                    try:
-                        task_data = json.loads(output_text)
-                        if isinstance(task_data, dict) and "id" in task_data and "title" in task_data:
-                            new_task_id = task_data["id"]
-                            break
-                    except Exception:
-                        m = re.search(r'"id"\s*:\s*(\d+)', output_text)
-                        if m:
-                            new_task_id = int(m.group(1))
-                            break
+        # Detect add_task result, extract extras, store for polling
+        try:
+            new_task_id: int | None = None
+            for item in result.new_items:
+                if not isinstance(item, ToolCallOutputItem):
+                    continue
+                output_text = str(getattr(item, "output", ""))
+                if not output_text:
+                    continue
+                try:
+                    task_data = json.loads(output_text)
+                    if isinstance(task_data, dict) and "id" in task_data and "title" in task_data:
+                        new_task_id = task_data["id"]
+                        break
+                except Exception:
+                    m = re.search(r'"id"\s*:\s*(\d+)', output_text)
+                    if m:
+                        new_task_id = int(m.group(1))
+                        break
 
-                if new_task_id is not None and user_text:
-                    extras = await _extract_task_extras(user_text)
-                    # Store in module-level dict keyed by thread_id so the
-                    # GET /chatkit/suggestions endpoint can return it reliably
-                    _pending_task_extras[thread.id] = {
-                        "task_id": new_task_id,
-                        **extras,
-                    }
-            except Exception:
-                pass  # non-critical
-
-            # Suggestions + task_extras fetched via GET /chatkit/suggestions/{thread_id}
+            if new_task_id is not None and user_text:
+                extras = await _extract_task_extras(user_text)
+                _pending_task_extras[thread.id] = {
+                    "task_id": new_task_id,
+                    **extras,
+                }
+        except Exception:
+            pass  # non-critical
 
 
 # Singleton instances
