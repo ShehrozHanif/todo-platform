@@ -73,12 +73,34 @@ jobs:
         run: |
           echo "=== Pods ==="
           kubectl get pods -n "$HELM_NAMESPACE" -o wide
+
+          echo ""
+          echo "=== Backend secret keys and DB hostname ==="
+          kubectl get secret todo-platform-backend-secret -n "$HELM_NAMESPACE" -o json | \
+            python3 -c "
+          import sys, json, base64
+          data = json.load(sys.stdin).get('data', {})
+          print('Secret keys:', list(data.keys()))
+          db_url = base64.b64decode(data.get('DATABASE_URL', '')).decode() if 'DATABASE_URL' in data else 'MISSING'
+          # Show scheme + host only (mask credentials)
+          if '://' in db_url:
+              after = db_url.split('://', 1)[1]
+              host_part = after.split('@', 1)[1].split('/')[0] if '@' in after else after.split('/')[0]
+              scheme = db_url.split('://', 1)[0]
+              print(f'DATABASE_URL scheme: {scheme}')
+              print(f'DATABASE_URL host: {host_part}')
+              print(f'DATABASE_URL length: {len(db_url)}')
+          else:
+              print(f'DATABASE_URL raw (no ://): {db_url[:60]}...')
+          " || echo "Could not read secret"
+
+          echo ""
           echo "=== Backend pod logs ==="
           kubectl logs -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" --tail=80 || true
-          echo "=== Backend pod describe ==="
-          kubectl describe pod -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" || true
-          echo "=== Events ==="
-          kubectl get events -n "$HELM_NAMESPACE" --sort-by='.lastTimestamp' | tail -20 || true
+
+          echo ""
+          echo "=== ConfigMap ==="
+          kubectl get configmap todo-platform-backend-config -n "$HELM_NAMESPACE" -o yaml || true
 
       - name: Verify rollouts
         run: |
