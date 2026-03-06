@@ -105,6 +105,9 @@ jobs:
           file: k8s/frontend/Dockerfile
           platforms: linux/amd64
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          build-args: |
+            NEXT_PUBLIC_APP_URL=http://todo.136.116.62.248.nip.io
+            NEXT_PUBLIC_API_URL=http://todo.136.116.62.248.nip.io
           tags: |
             ghcr.io/${{ env.OWNER }}/todo-frontend:${{ github.sha }}
             ghcr.io/${{ env.OWNER }}/todo-frontend:latest
