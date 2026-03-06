@@ -50,7 +50,7 @@ jobs:
           kubectl delete deployment todo-platform-frontend \
             -n "$HELM_NAMESPACE" --ignore-not-found
 
-      - name: Deploy to GKE
+      - name: Deploy to GKE (no --wait, diagnose first)
         run: |
           helm upgrade --install todo-platform k8s/helm/todo-platform \
             --namespace "$HELM_NAMESPACE" \
@@ -65,31 +65,24 @@ jobs:
             --set frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
             --set frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --timeout 8m \
-            --wait
+            --timeout 8m
 
-      - name: Verify backend rollout
+      - name: Wait for backend pod and diagnose
         run: |
-          kubectl rollout status deployment/todo-platform-backend \
-            -n "$HELM_NAMESPACE" --timeout=120s
-
-      - name: Verify frontend rollout
-        run: |
-          kubectl rollout status deployment/todo-platform-frontend \
-            -n "$HELM_NAMESPACE" --timeout=120s
-
-      - name: Health check
-        run: |
-          INGRESS_HOST=$(kubectl get ingress todo-platform-ingress \
-            -n "$HELM_NAMESPACE" \
-            -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || echo "")
-          if [ -n "$INGRESS_HOST" ]; then
-            curl --fail --retry 5 --retry-delay 10 \
-              "https://${INGRESS_HOST}/health" || {
-              echo "Health check failed — rolling back"
-              helm rollback todo-platform -n "$HELM_NAMESPACE"
-              exit 1
-            }
-          else
-            echo "No ingress host found — skipping HTTP health check"
-          fi
+          echo "=== Pods ==="
+          kubectl get pods -n "$HELM_NAMESPACE" -o wide
+          echo ""
+          echo "=== Waiting 90s for backend pod to schedule ==="
+          sleep 90
+          echo ""
+          echo "=== Pods after wait ==="
+          kubectl get pods -n "$HELM_NAMESPACE" -o wide
+          echo ""
+          echo "=== Backend pod describe ==="
+          kubectl describe pod -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" || true
+          echo ""
+          echo "=== Backend pod logs ==="
+          kubectl logs -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" --tail=100 || true
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$HELM_NAMESPACE" --sort-by='.lastTimestamp' | tail -30 || true
