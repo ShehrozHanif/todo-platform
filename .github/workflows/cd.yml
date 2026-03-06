@@ -43,6 +43,13 @@ jobs:
       - name: Update Helm dependencies (Bitnami Kafka + Redis)
         run: helm dependency update k8s/helm/todo-platform
 
+      - name: Clear stuck deployments
+        run: |
+          kubectl delete deployment todo-platform-backend \
+            -n "$HELM_NAMESPACE" --ignore-not-found
+          kubectl delete deployment todo-platform-frontend \
+            -n "$HELM_NAMESPACE" --ignore-not-found
+
       - name: Deploy to GKE
         run: |
           helm upgrade --install todo-platform k8s/helm/todo-platform \
@@ -58,7 +65,7 @@ jobs:
             --set frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
             --set frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
             --set mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --timeout 5m \
+            --timeout 8m \
             --wait
 
       - name: Verify backend rollout
