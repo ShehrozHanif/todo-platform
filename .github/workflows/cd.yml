@@ -50,7 +50,7 @@ jobs:
           kubectl delete deployment todo-platform-frontend \
             -n "$HELM_NAMESPACE" --ignore-not-found
 
-      - name: Deploy to GKE (no --wait, diagnose first)
+      - name: Deploy to GKE
         run: |
           helm upgrade --install todo-platform k8s/helm/todo-platform \
             --namespace "$HELM_NAMESPACE" \
@@ -59,30 +59,46 @@ jobs:
             --set backend.image.tag="${{ inputs.image_tag }}" \
             --set frontend.image.tag="${{ inputs.image_tag }}" \
             --set mcp-server.image.tag="${{ inputs.image_tag }}" \
-            --set backend.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --set backend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
-            --set backend.secrets.OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
-            --set frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
-            --set frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
-            --set mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-            --timeout 8m
+            --set-string backend.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            --set-string backend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
+            --set-string backend.secrets.OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --set-string frontend.secrets.DATABASE_URL="${{ secrets.FRONTEND_DATABASE_URL }}" \
+            --set-string frontend.secrets.BETTER_AUTH_SECRET="${{ secrets.BETTER_AUTH_SECRET }}" \
+            --set-string mcp-server.secrets.DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            --timeout 8m \
+            --wait
 
-      - name: Wait for backend pod and diagnose
+      - name: Diagnose on failure
+        if: failure()
         run: |
           echo "=== Pods ==="
           kubectl get pods -n "$HELM_NAMESPACE" -o wide
-          echo ""
-          echo "=== Waiting 90s for backend pod to schedule ==="
-          sleep 90
-          echo ""
-          echo "=== Pods after wait ==="
-          kubectl get pods -n "$HELM_NAMESPACE" -o wide
-          echo ""
+          echo "=== Backend pod logs ==="
+          kubectl logs -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" --tail=80 || true
           echo "=== Backend pod describe ==="
           kubectl describe pod -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" || true
-          echo ""
-          echo "=== Backend pod logs ==="
-          kubectl logs -l app.kubernetes.io/name=backend -n "$HELM_NAMESPACE" --tail=100 || true
-          echo ""
           echo "=== Events ==="
-          kubectl get events -n "$HELM_NAMESPACE" --sort-by='.lastTimestamp' | tail -30 || true
+          kubectl get events -n "$HELM_NAMESPACE" --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Verify rollouts
+        run: |
+          kubectl rollout status deployment/todo-platform-backend \
+            -n "$HELM_NAMESPACE" --timeout=120s
+          kubectl rollout status deployment/todo-platform-frontend \
+            -n "$HELM_NAMESPACE" --timeout=120s
+
+      - name: Health check
+        run: |
+          INGRESS_HOST=$(kubectl get ingress todo-platform-ingress \
+            -n "$HELM_NAMESPACE" \
+            -o jsonpath='{.spec.rules[0].host}' 2>/dev/null || echo "")
+          if [ -n "$INGRESS_HOST" ]; then
+            curl --fail --retry 5 --retry-delay 10 \
+              "https://${INGRESS_HOST}/health" || {
+              echo "Health check failed — rolling back"
+              helm rollback todo-platform -n "$HELM_NAMESPACE"
+              exit 1
+            }
+          else
+            echo "No ingress host found — skipping HTTP health check"
+          fi
