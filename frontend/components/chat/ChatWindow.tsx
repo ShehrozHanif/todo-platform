@@ -13,7 +13,7 @@ import { sendChatMessage, getChatHistory } from '@/lib/api';
 import { useTaskContext } from '@/context/TaskContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const CHATKIT_DOMAIN_KEY = 'domain_pk_699f4531a0208194866da6aa1f550e6909be80cabf9b93f1';
+const CHATKIT_DOMAIN_KEY = 'domain_pk_69aaf04f846081969a82963da850dc9f06a780baca74b4c8';
 
 /** Fetch JWT from the /api/token bridge endpoint. */
 async function getToken(): Promise<string | null> {
